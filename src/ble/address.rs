@@ -21,6 +21,21 @@ impl TryFrom<sys::ble_addr_t> for Address {
   }
 }
 
+impl core::fmt::Display for Address {
+  fn fmt(&self, fmt: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    write!(
+      fmt,
+      "{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
+      self.addr.0[5],
+      self.addr.0[4],
+      self.addr.0[3],
+      self.addr.0[2],
+      self.addr.0[1],
+      self.addr.0[0]
+    )
+  }
+}
+
 impl core::fmt::Debug for Address {
   fn fmt(&self, fmt: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
     write!(

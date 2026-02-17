@@ -26,20 +26,16 @@ impl core::fmt::Debug for AdData<'_> {
   }
 }
 
+#[allow(dead_code)]
+#[derive(Debug)]
 pub enum AdStructure<'a> {
   Flags(u8),
   ServiceUuids16(&'a [[u8; 2]]),
   ServiceUuids128(&'a [[u8; 16]]),
   CompleteLocalName(&'a [u8]),
   ShortenedLocalName(&'a [u8]),
-  ManufacturerData {
-    company: u16,
-    payload: &'a [u8],
-  },
-  Unknown {
-    ty: u8,
-    data: &'a [u8],
-  },
+  ManufacturerData { company: u16, payload: &'a [u8] },
+  Unknown { ty: u8, data: &'a [u8] },
 }
 
 #[derive(Debug)]
@@ -54,8 +50,7 @@ impl<'a> TryFrom<&'a sys::ble_gap_disc_desc> for AdReport<'a> {
   type Error = ble::BleError;
 
   fn try_from(desc: &'a sys::ble_gap_disc_desc) -> Result<Self, Self::Error> {
-    let event_type =
-      AdEventType::from_repr(desc.event_type).ok_or(ble::BleError::InvalidValue)?;
+    let event_type = AdEventType::from_repr(desc.event_type).ok_or(ble::BleError::InvalidValue)?;
     let address = ble::Address::try_from(desc.addr)?;
     let rssi = desc.rssi;
     let data = AdData {
@@ -109,10 +104,7 @@ impl<'a> Iterator for AdStructureIter<'a> {
         }
         let company = u16::from_le_bytes([data[0], data[1]]);
         let payload = &data[2..];
-        AdStructure::ManufacturerData {
-          company,
-          payload,
-        }
+        AdStructure::ManufacturerData { company, payload }
       }
       _ => AdStructure::Unknown { ty, data },
     };

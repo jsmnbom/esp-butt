@@ -1,19 +1,34 @@
 use std::{
-  cell::RefCell,
+  collections::HashMap,
   ffi::c_void,
-  marker::PhantomPinned,
-  pin::{Pin, pin},
-  sync::atomic::AtomicU16,
+  sync::{
+    Mutex,
+    atomic::{AtomicU16, Ordering},
+  },
 };
 
-use esp_idf_svc::sys::{self, BLE_HCI_CONN_ITVL, esp};
-use smallvec::SmallVec;
-use tokio::sync::{broadcast, mpsc, oneshot};
+use allocator_api2::vec::Vec;
+use esp_idf_svc::sys::{self, esp, esp_nofail};
+use tokio::sync::broadcast;
+use uuid::Uuid;
 
 use crate::{
-  ble::{self, utils::as_void_ptr},
-  utils::ptr::voidp_to_ref,
+  ble,
+  utils::{heap::ExternalMemory, os_mbuf},
 };
+
+#[derive(Debug, Clone)]
+pub struct Notification {
+  pub attr_handle: u16,
+  pub data: std::vec::Vec<u8>,
+}
+
+#[derive(Debug, Clone)]
+pub enum ClientEvent {
+  Connected,
+  Disconnected,
+  Notification(Notification),
+}
 
 #[derive(Debug, Clone)]
 pub struct ConnectionParameters {
@@ -103,17 +118,19 @@ impl ClientConnector {
     }
   }
 
+  #[allow(dead_code)]
   pub fn connection_parameters(mut self, params: ConnectionParameters) -> Self {
     self.conn_params = params;
     self
   }
 
+  #[allow(dead_code)]
   pub fn connect_timeout(mut self, timeout: core::time::Duration) -> Self {
     self.connect_timeout = timeout;
     self
   }
 
-  pub async fn connect(self) -> Result<Pin<Box<Client>>, ble::BleError> {
+  pub async fn connect(self) -> Result<Client, ble::BleError> {
     unsafe {
       if sys::ble_gap_conn_find_by_addr(&self.address.into(), core::ptr::null_mut()) == 0 {
         ::log::warn!("A connection to {:?} already exists", self.address);
@@ -122,11 +139,14 @@ impl ClientConnector {
     }
 
     let own_addr_type = ble::utils::get_own_address_type()?;
-    let (tx, rx) = tokio::sync::oneshot::channel();
+    let (tx, mut rx) = broadcast::channel(16);
 
-    let mut client = Box::into_pin(Box::new(Client::new(self.address, tx)));
-
-    let client_ptr = Pin::as_ref(&client).get_ref() as *const Client as *mut c_void;
+    let state = Box::new(ClientState {
+      conn_handle: AtomicU16::new(0),
+      tx,
+      handle_to_uuid: Mutex::new(HashMap::new()),
+    });
+    let state_ptr = state.as_ref() as *const _ as *mut c_void;
 
     unsafe {
       esp!(sys::ble_gap_connect(
@@ -134,89 +154,143 @@ impl ClientConnector {
         &self.address.into(),
         self.connect_timeout.as_millis() as i32,
         &self.conn_params.into(),
-        Some(Client::handle_gap_event),
-        client_ptr,
+        Some(on_gap_event),
+        state_ptr,
       ))?;
     }
 
-    match rx.await {
-      Ok(Ok(conn_handle)) => {
-        let client_ref = Pin::as_mut(&mut client);
-        let client_mut = unsafe { client_ref.get_unchecked_mut() };
-        client_mut.conn_handle = conn_handle;
-        Ok(client)
+    loop {
+      let event = rx.recv().await;
+      match event {
+        Ok(Ok(event)) => match event {
+          ClientEvent::Connected => {
+            let services =
+              ble::Peer::discover_services(state.conn_handle.load(Ordering::SeqCst)).await?;
+
+            {
+              let mut map = state.handle_to_uuid.lock().unwrap();
+              for service in &services {
+                for characteristic in &service.characteristics {
+                  map.insert(characteristic.value_handle, characteristic.uuid);
+                }
+              }
+            }
+
+            let client = Client {
+              state,
+              address: self.address,
+              services,
+            };
+            return Ok(client);
+          }
+          _ => continue,
+        },
+        Ok(Err(e)) => return Err(e),
+        Err(_) => return Err(ble::BleError::ConnectionFailed),
       }
-      Ok(Err(e)) => Err(e),
-      Err(_) => Err(ble::BleError::ConnectionFailed),
     }
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
+pub struct ClientState {
+  conn_handle: AtomicU16,
+  tx: broadcast::Sender<Result<ClientEvent, ble::BleError>>,
+  handle_to_uuid: Mutex<HashMap<u16, Uuid>>,
+}
+
+#[derive(Debug)]
 pub struct Client {
+  state: Box<ClientState>,
   address: ble::Address,
-  conn_handle: u16,
-  conn_notifier: Option<oneshot::Sender<Result<u16, ble::BleError>>>,
-  _pin: PhantomPinned,
+  services: Vec<ble::Service, ExternalMemory>,
 }
 
 impl Client {
-  fn new(
-    address: ble::Address,
-    conn_notifier: oneshot::Sender<Result<u16, ble::BleError>>,
-  ) -> Self {
-    Self {
-      address,
-      conn_notifier: Some(conn_notifier),
-      ..Default::default()
-    }
+  pub fn address(&self) -> ble::Address {
+    self.address
   }
 
-  extern "C" fn handle_gap_event(event: *mut sys::ble_gap_event, arg: *mut c_void) -> i32 {
-    let event = match ble::GapEvent::try_from(unsafe { &*event }) {
-      Ok(e) => e,
-      Err(e) => {
-        ::log::error!("Failed to parse GAP event: {:?}", e);
-        return 0;
-      }
-    };
-    let client = unsafe {
-      let client_ptr = arg as *mut Client;
-      // Safety: This assumes the pointer is valid and points to a `Client`.
-      &mut *client_ptr
-    };
+  pub fn events(&self) -> broadcast::Receiver<Result<ClientEvent, ble::BleError>> {
+    self.state.tx.subscribe()
+  }
 
-    match event {
-      ble::GapEvent::Connected {
-        status,
-        conn_handle,
-      } => {
-        if status == 0 {
-          log::info!("Connected with handle {}", conn_handle);
-          client.conn_notifier.take().map(|notifier| {
-            let _ = notifier.send(Ok(conn_handle));
-          });
-        } else {
-          log::error!("Failed to connect: status {}", status);
-          client.conn_notifier.take().map(|notifier| {
-            let _ = notifier.send(Err(ble::BleError::ConnectionFailed));
-          });
+  #[allow(dead_code)]
+  pub fn services_iter(&self) -> impl Iterator<Item = &ble::Service> {
+    self.services.iter()
+  }
+
+  #[allow(dead_code)]
+  pub fn get_service(&self, uuid: Uuid) -> Option<&ble::Service> {
+    self.services.iter().find(|s| s.uuid == uuid)
+  }
+}
+
+extern "C" fn on_gap_event(event: *mut sys::ble_gap_event, arg: *mut c_void) -> i32 {
+  let event = match ble::GapEvent::try_from(unsafe { &*event }) {
+    Ok(e) => e,
+    Err(e) => {
+      ::log::error!("Failed to parse GAP event: {:?}", e);
+      return 0;
+    }
+  };
+  let state: &ClientState = unsafe { &*arg.cast() };
+
+  match event {
+    ble::GapEvent::Connected {
+      status,
+      conn_handle,
+    } => {
+      if status == 0 {
+        log::info!("Connected with handle {}", conn_handle);
+        state.conn_handle.store(conn_handle, Ordering::SeqCst);
+        log::info!("Exchanging MTU");
+        unsafe {
+          esp_nofail!(sys::ble_gattc_exchange_mtu(
+            conn_handle,
+            None,
+            core::ptr::null_mut()
+          ))
         }
-      }
-      ble::GapEvent::Disconnected {
-        reason,
-        conn_handle,
-      } => {
-        log::info!(
-          "Disconnected from handle {}: reason {}",
-          conn_handle,
-          reason
-        );
-      }
-      _ => {
-        log::info!("Received unhandled GAP event for client: {:?}", event);
+        let _ = state.tx.send(Ok(ClientEvent::Connected));
+      } else {
+        log::error!("Failed to connect: status {}", status);
+        let _ = state.tx.send(Err(ble::BleError::ConnectionFailed));
       }
     }
-    0
+    ble::GapEvent::LinkEstablished { .. } => {
+      log::info!("Link established");
+    }
+    ble::GapEvent::Mtu { mtu, .. } => {
+      log::info!("MTU exchanged: {}", mtu);
+    }
+    ble::GapEvent::Disconnected {
+      reason,
+      conn_handle,
+    } => {
+      log::info!(
+        "Disconnected from handle {}: reason {}",
+        conn_handle,
+        reason
+      );
+      let _ = state.tx.send(Ok(ClientEvent::Disconnected));
+      // TODO: make sure inner state gets dropped
+    }
+    ble::GapEvent::NotifyRx {
+      attr_handle, om, ..
+    } => {
+      let mbuf = os_mbuf::OsMBuf(om);
+      let data_slice = mbuf.as_flat();
+      // Unfortunately needs to be std::vec::Vec so we can pass it to buttplug
+      let mut data = std::vec::Vec::with_capacity(data_slice.as_slice().len());
+      data.extend_from_slice(data_slice.as_slice());
+
+      let notification = Notification { attr_handle, data };
+      let _ = state.tx.send(Ok(ClientEvent::Notification(notification)));
+    }
+    _ => {
+      log::info!("Received unhandled GAP event for client: {:?}", event);
+    }
   }
+  0
 }

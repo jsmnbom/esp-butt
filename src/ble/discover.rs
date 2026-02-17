@@ -1,9 +1,7 @@
-use std::{ffi::c_void, sync::atomic::Ordering};
+use std::ffi::c_void;
 
-use bt_hci::param::AdvKind;
 use esp_idf_svc::sys::{self, esp_nofail};
 use log::{info, warn};
-use strum::FromRepr;
 
 use crate::{ble, utils::ptr::voidp_to_ref};
 
@@ -35,6 +33,7 @@ impl<'a, L: DiscoveryListener> Discovery<'a, L> {
     .active(true)
     .window(30)
     .interval(30)
+    .duration(core::time::Duration::from_secs(10))
   }
 
   pub fn duration(mut self, duration: core::time::Duration) -> Self {
@@ -110,7 +109,10 @@ impl<'a, L: DiscoveryListener> Discovery<'a, L> {
       ble::GapEvent::Discovery(ad_report) => discovery.listener.on_report(&ad_report),
       ble::GapEvent::DiscoveryComplete { .. } => discovery.listener.on_complete(),
       _ => {
-          info!("Received unhandled GAP event while discovering: {:?}", event);
+        info!(
+          "Received unhandled GAP event while discovering: {:?}",
+          event
+        );
       }
     }
     0

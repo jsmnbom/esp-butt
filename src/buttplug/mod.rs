@@ -35,7 +35,8 @@ pub fn create_buttplug() -> anyhow::Result<(ButtplugInProcessClientConnector, Bu
 
   info!("Creating device manager...");
   let mut device_manager_builder = ServerDeviceManagerBuilder::new(dcm);
-  // device_manager_builder.comm_manager(hwmgr_esp32_nimble::NimBLECommunicationManagerBuilder::default());
+  device_manager_builder
+    .comm_manager(hwmgr::comm_manager::BleCommunicationManagerBuilder::default());
   let device_manager = device_manager_builder.finish()?;
 
   info!("Creating server...");

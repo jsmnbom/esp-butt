@@ -1,8 +1,10 @@
 use std::{
   alloc::{GlobalAlloc, Layout},
+  ptr::NonNull,
   sync::atomic::AtomicU32,
 };
 
+use allocator_api2::alloc::AllocError;
 use esp_idf_svc::sys::{
   MALLOC_CAP_8BIT,
   MALLOC_CAP_INTERNAL,
@@ -16,7 +18,7 @@ use esp_idf_svc::sys::{
 };
 
 #[global_allocator]
-static HEAP: EspAlloc = EspAlloc::new();
+pub static HEAP: EspAlloc = EspAlloc::new(MALLOC_CAP_8BIT);
 
 const BAR_WIDTH: usize = 35;
 
@@ -35,14 +37,14 @@ impl Drop for HeapAllocCapsGuard {
   }
 }
 
-struct EspAlloc {
+pub struct EspAlloc {
   malloc_caps: AtomicU32,
 }
 
 impl EspAlloc {
-  const fn new() -> Self {
+  const fn new(caps: u32) -> Self {
     Self {
-      malloc_caps: AtomicU32::new(MALLOC_CAP_8BIT),
+      malloc_caps: AtomicU32::new(caps),
     }
   }
 
@@ -79,6 +81,29 @@ unsafe impl GlobalAlloc for EspAlloc {
   unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
     unsafe {
       heap_caps_free(ptr as *mut _);
+    }
+  }
+}
+
+#[derive(Clone, Copy)]
+pub struct ExternalMemory;
+
+unsafe impl allocator_api2::alloc::Allocator for ExternalMemory {
+  fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+    let raw_ptr = unsafe {
+      heap_caps_aligned_alloc(
+        layout.align(),
+        layout.size(),
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT,
+      ) as *mut _
+    };
+    let ptr = NonNull::new(raw_ptr).ok_or(AllocError)?;
+    Ok(NonNull::slice_from_raw_parts(ptr, layout.size()))
+  }
+
+  unsafe fn deallocate(&self, ptr: NonNull<u8>, _layout: Layout) {
+    unsafe {
+      heap_caps_free(ptr.as_ptr() as *mut _);
     }
   }
 }

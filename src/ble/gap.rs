@@ -3,6 +3,7 @@ use log::warn;
 
 use crate::ble;
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum GapEvent<'a> {
   Connected {
@@ -27,9 +28,27 @@ pub enum GapEvent<'a> {
     conn_handle: u16,
   },
   TerminationFailed {},
-  NotifyRx {},
-  NotifyTx {},
-  Subscribe {},
+  NotifyRx {
+    conn_handle: u16,
+    attr_handle: u16,
+    om: *mut sys::os_mbuf,
+    indication: bool,
+  },
+  NotifyTx {
+    status: i32,
+    conn_handle: u16,
+    attr_handle: u16,
+    indication: bool,
+  },
+  Subscribe {
+    conn_handle: u16,
+    attr_handle: u16,
+    reason: u16,
+    prev_notify: bool,
+    cur_notify: bool,
+    prev_indicate: bool,
+    cur_indicate: bool,
+  },
   Mtu {
     conn_handle: u16,
     channel_id: u16,
@@ -54,24 +73,22 @@ impl<'a> TryFrom<&'a sys::ble_gap_event> for GapEvent<'a> {
           status: connect.status,
           conn_handle: connect.conn_handle,
         })
-      },
+      }
       sys::BLE_GAP_EVENT_LINK_ESTAB => {
         let link_established = unsafe { &value.__bindgen_anon_1.link_estab };
         Ok(Self::LinkEstablished {
           status: link_established.status,
           conn_handle: link_established.conn_handle,
         })
-      },
+      }
       sys::BLE_GAP_EVENT_DISCONNECT => {
         let disconnect = unsafe { &value.__bindgen_anon_1.disconnect };
         Ok(Self::Disconnected {
           reason: disconnect.reason,
-          conn_handle: disconnect.conn.conn_handle
+          conn_handle: disconnect.conn.conn_handle,
         })
       }
-      sys::BLE_GAP_EVENT_L2CAP_UPDATE_REQ => {
-        Ok(Self::L2CapUpdateRequest {})
-      }
+      sys::BLE_GAP_EVENT_L2CAP_UPDATE_REQ => Ok(Self::L2CapUpdateRequest {}),
       sys::BLE_GAP_EVENT_DISC => {
         let disc = unsafe { &value.__bindgen_anon_1.disc };
         Ok(Self::Discovery(ble::AdReport::try_from(disc)?))
@@ -97,6 +114,36 @@ impl<'a> TryFrom<&'a sys::ble_gap_event> for GapEvent<'a> {
           mtu: mtu.value,
         })
       }
+      sys::BLE_GAP_EVENT_NOTIFY_RX => {
+        let notify_rx = unsafe { &value.__bindgen_anon_1.notify_rx };
+        Ok(Self::NotifyRx {
+          conn_handle: notify_rx.conn_handle,
+          attr_handle: notify_rx.attr_handle,
+          om: notify_rx.om,
+          indication: notify_rx.indication() != 0,
+        })
+      }
+      sys::BLE_GAP_EVENT_NOTIFY_TX => {
+        let notify_tx = unsafe { &value.__bindgen_anon_1.notify_tx };
+        Ok(Self::NotifyTx {
+          status: notify_tx.status,
+          conn_handle: notify_tx.conn_handle,
+          attr_handle: notify_tx.attr_handle,
+          indication: notify_tx.indication() != 0,
+        })
+      }
+      sys::BLE_GAP_EVENT_SUBSCRIBE => {
+        let subscribe = unsafe { &value.__bindgen_anon_1.subscribe };
+        Ok(Self::Subscribe {
+          conn_handle: subscribe.conn_handle,
+          attr_handle: subscribe.attr_handle,
+          reason: subscribe.reason as u16,
+          prev_notify: subscribe.prev_notify() != 0,
+          cur_notify: subscribe.cur_notify() != 0,
+          prev_indicate: subscribe.prev_indicate() != 0,
+          cur_indicate: subscribe.cur_indicate() != 0,
+        })
+      }
       sys::BLE_GAP_EVENT_PHY_UPDATE_COMPLETE => {
         let phy_update = unsafe { &value.__bindgen_anon_1.phy_updated };
         Ok(Self::PhyUpdated {
@@ -106,12 +153,11 @@ impl<'a> TryFrom<&'a sys::ble_gap_event> for GapEvent<'a> {
           rx_phy: phy_update.rx_phy,
         })
       }
-     
+
       _ => {
         warn!("Received unhandled GAP event type: {}", value.type_);
         Err(ble::BleError::Unimplemented)
       }
-     
     }
   }
 }

@@ -46,19 +46,22 @@ impl BleCommunicationManager {
     }
   }
 
-  fn maybe_add_peripheral(&mut self, properties: &ble::PeripheralProperties) {
+  fn maybe_add_peripheral(
+    sender: &Sender<HardwareCommunicationManagerEvent>,
+    properties: &ble::PeripheralProperties,
+  ) {
     if properties.name.is_empty() || properties.services.is_empty() {
       trace!(
         "Ignoring peripheral with no name or no services: {:?}",
         properties
       );
+      return;
     }
     let name = properties.name.to_string();
     let address = format!("{:?}", properties.address);
 
     let creator = Box::new(BleHardwareConnector::new(properties));
-    if self
-      .sender
+    if sender
       .try_send(HardwareCommunicationManagerEvent::DeviceFound {
         name,
         address,
@@ -87,6 +90,7 @@ impl HardwareCommunicationManager for BleCommunicationManager {
 
   fn stop_scanning(&mut self) -> ButtplugResultFuture {
     self.scanning_status.store(false, Ordering::Relaxed);
+    ble::Discovery::<Self>::stop();
     async { Ok(()) }.boxed()
   }
 
@@ -101,6 +105,12 @@ impl HardwareCommunicationManager for BleCommunicationManager {
 
 impl DiscoveryListener for BleCommunicationManager {
   fn on_report(&mut self, report: &ble::AdReport) {
+    if !matches!(
+      report.event_type,
+      ble::AdEventType::AdvInd | ble::AdEventType::ScanRsp
+    ) {
+      return;
+    }
     let entry = self
       .peripherals
       .entry(report.address)
@@ -108,6 +118,8 @@ impl DiscoveryListener for BleCommunicationManager {
     if let Err(e) = entry.update(report) {
       log::warn!("Failed to update peripheral properties: {:?}", e);
     }
+
+    Self::maybe_add_peripheral(&self.sender, entry);
   }
 
   fn on_complete(&mut self) {

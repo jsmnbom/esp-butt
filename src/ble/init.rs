@@ -1,6 +1,6 @@
 use std::{
   ffi::c_void,
-  sync::atomic::{AtomicBool, AtomicU8, Ordering},
+  sync::atomic::{AtomicBool, Ordering},
 };
 
 use esp_idf_svc::sys::{self, esp_nofail};
@@ -12,7 +12,6 @@ unsafe extern "C" {
 
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 static SYNCED: AtomicBool = AtomicBool::new(false);
-
 
 pub fn init() {
   unsafe {

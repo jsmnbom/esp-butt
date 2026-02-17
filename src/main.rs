@@ -1,16 +1,19 @@
+use std::ffi::{CStr, c_char};
+
+use buttplug_client::ButtplugClientEvent;
+use esp_idf_svc::{hal::task::block_on, sys};
+use futures::StreamExt;
+use log::info;
+use utils::spawn::APP_CORE;
+
 mod ble;
 mod buttplug;
 mod utils;
 
-use std::collections::HashMap;
-
-use ble::{Discovery, DiscoveryListener};
-use esp_idf_svc::sys;
-use futures::executor::block_on;
-
 fn setup() {
   esp_idf_svc::sys::link_patches();
   tracing_subscriber::fmt()
+    .with_max_level(tracing::Level::DEBUG)
     .with_timer(utils::log::TimeOnlyTimer {})
     .init();
 
@@ -21,74 +24,77 @@ fn setup() {
   }
 }
 
-fn main() {
+fn main() -> anyhow::Result<()> {
   setup();
 
   utils::heap::log_heap();
+  v_task_list();
 
   ble::init();
+  buttplug::init();
 
   log::info!("Hello, world!");
 
-  utils::heap::log_heap();
+  utils::spawn::spawn(
+    async {
+      loop {
+        utils::heap::log_heap();
+        v_task_list();
+        async_io::Timer::after(core::time::Duration::from_secs(10)).await;
+      }
+    },
+    c"report",
+    8 * 1024,
+    APP_CORE,
+  );
 
-  // let mut listener = Listener {
-  //   peripherals: HashMap::new(),
-  // };
+  let (connector, client) = buttplug::create_buttplug().unwrap();
 
-  // Discovery::new(&mut listener)
-  //   .duration(core::time::Duration::from_secs(10))
-  //   .start();
-
-  log::info!("Starting BLE client...");
-
-  let connector = ble::ClientConnector::new(ble::Address {
-    kind: ble::AddrKind::RANDOM,
-    addr: ble::BdAddr([0x71, 0xBA, 0xD4, 0x8E, 0x36, 0xE2]),
-  });
-
-  
+  let mut event_stream = client.event_stream();
 
   block_on(async {
+    info!("client.connect(connector).await");
+    client.connect(connector).await?;
+    info!("Client connected successfully!");
 
-    log::info!("Connecting to device...");
+    // Start scanning - this just sends a message and returns
+    info!("Starting BLE scan...");
+    client.start_scanning().await?;
+    info!("BLE scan started.");
 
-    match connector.connect().await {
-      Ok(client) => log::info!("Connected to device!"),
-      Err(e) => log::error!("Failed to connect to device: {:?}", e),
+    // Listen for events indefinitely
+    info!("Listening for device events...");
+    while let Some(event) = event_stream.next().await {
+      info!("Received event: {:?}", event);
+      if let ButtplugClientEvent::DeviceAdded(device) = event {
+        info!("Device {} connected!", device.name());
+        // You can interact with the device here
+      }
     }
 
+    Ok::<(), anyhow::Error>(())
+  })?;
 
+  block_on(async {
+    async_io::Timer::after(core::time::Duration::from_secs(5)).await;
+  });
 
-    loop {
-      async_io::Timer::after(core::time::Duration::from_secs(5)).await;
-    }
-  })
+  Ok(())
 }
 
-// struct Listener {
-//   peripherals: HashMap<ble::Address, ble::PeripheralProperties>,
-// }
+fn v_task_list() {
+  const BUFFER_SIZE: usize = 1024;
+  let mut buffer =
+    allocator_api2::vec::Vec::with_capacity_in(BUFFER_SIZE, utils::heap::ExternalMemory);
+  let c_buffer: *mut c_char = buffer.as_mut_ptr() as *mut c_char;
 
-// impl DiscoveryListener for Listener {
-//   fn on_report(&mut self, report: &ble::AdReport) {
-//     log::info!("Received advertisement report: {:?}", report);
-//     let entry = self
-//       .peripherals
-//       .entry(report.address)
-//       .or_insert_with(|| ble::PeripheralProperties::new(report.address, report.rssi));
-//     if let Err(e) = entry.update(report) {
-//       log::warn!("Failed to update peripheral properties: {:?}", e);
-//     }
-//   }
+  unsafe {
+    sys::vTaskList(c_buffer);
+  }
 
-//   fn on_complete(&mut self) {
-//     log::info!(
-//       "BLE discovery complete. Found {} peripherals.",
-//       self.peripherals.len()
-//     );
-//     for (address, properties) in self.peripherals.iter() {
-//       log::info!("Peripheral {:?}: {:?}", address, properties);
-//     }
-//   }
-// }
+  let c_str = unsafe { CStr::from_ptr(c_buffer) };
+  match c_str.to_str() {
+    Ok(rust_string) => println!("Task list:\n{}", rust_string),
+    Err(err) => eprintln!("Failed to convert CStr to &str: {}", err),
+  }
+}

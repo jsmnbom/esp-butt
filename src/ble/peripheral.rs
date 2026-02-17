@@ -1,6 +1,3 @@
-use std::collections::HashMap;
-
-use bt_hci::uuid::BluetoothUuid16;
 use smallvec::SmallVec;
 use uuid::Uuid;
 
@@ -53,18 +50,12 @@ impl PeripheralProperties {
         }
         ble::AdStructure::ServiceUuids16(uuids) => {
           for uuid in uuids {
-            self.services.push(Uuid::from(bt_hci::uuid::BluetoothUuid::Uuid16(
-              BluetoothUuid16::from_le_slice(uuid)
-                .map_err(|_| ble::BleError::InvalidValue)?,
-            )));
+            self.services.push(ble::utils::uuid16(uuid)?);
           }
         }
         ble::AdStructure::ServiceUuids128(uuids) => {
           for uuid in uuids {
-            self.services.push(Uuid::from(bt_hci::uuid::BluetoothUuid::Uuid128(
-              bt_hci::uuid::BluetoothUuid128::from_le_slice(uuid)
-                .map_err(|_| ble::BleError::InvalidValue)?,
-            )));
+            self.services.push(ble::utils::uuid128(uuid)?);
           }
         }
         _ => {}

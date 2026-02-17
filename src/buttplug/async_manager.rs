@@ -1,11 +1,11 @@
-use std::ffi::CStr;
+use std::ffi::{CStr, c_void};
 
 use async_trait::async_trait;
 use buttplug_core::util::async_manager::AsyncManager;
 use futures::task::FutureObj;
 use tracing::Span;
 
-use crate::utils::spawn::{APP_CORE, PRO_CORE, pre_spawn};
+use crate::utils::spawn::{APP_CORE, PRO_CORE};
 
 #[derive(Default, Debug)]
 pub struct EspAsyncManager;
@@ -16,8 +16,7 @@ impl AsyncManager for EspAsyncManager {
     let span_name: Option<&str> = span.metadata().and_then(|metadata| Some(metadata.name()));
     let mut name: &'static CStr = c"unnamed";
     let mut core = APP_CORE;
-    // NOTE: Seems currently to be ignored in favor of CONFIG_PTHREAD_TASK_STACK_SIZE_DEFAULT
-    let stack_size = 16 * 1024;
+    let mut stack_size = 16 * 1024;
 
     log::info!(
       "Spawning task in async manager with span name: {:?}",
@@ -28,23 +27,49 @@ impl AsyncManager for EspAsyncManager {
       Some("ServerDeviceManagerEventLoop") => {
         name = c"devicemgr";
         core = PRO_CORE;
+        stack_size = 32 * 1024;
       }
       Some("InProcessClientConnectorEventSenderLoop") => {
         name = c"connector";
+        stack_size = 12 * 1024;
       }
       Some("Client Loop Span") => {
         name = c"clientloop";
+        stack_size = 12 * 1024;
       }
       _ => {}
     }
 
-    pre_spawn(name, stack_size, core);
-    std::thread::spawn(move || {
-      esp_idf_svc::hal::task::block_on(future);
-    });
+    log::info!(
+      "Spawning task '{}' on core {:?} with stack size {}",
+      name.to_str().unwrap_or("invalid UTF-8"),
+      core,
+      stack_size
+    );
+
+    let arg = Box::into_raw(Box::new(future)) as *mut c_void;
+
+    if let Err(e) =
+      unsafe { esp_idf_svc::hal::task::create(task_handler, name, stack_size, arg, 5, Some(core)) }
+    {
+      log::error!("Failed to spawn task '{}': {}", name.to_str().unwrap(), e);
+      unsafe {
+        drop(Box::from_raw(arg as *mut FutureObj<'static, ()>));
+      }
+    }
+
+    // pre_spawn(name, stack_size, core);
+    // std::thread::spawn(move || {
+    //   esp_idf_svc::hal::task::block_on(future);
+    // });
   }
 
   async fn sleep(&self, duration: core::time::Duration) {
     async_io::Timer::after(duration).await;
   }
+}
+
+extern "C" fn task_handler(arg: *mut c_void) {
+  let future = unsafe { Box::from_raw(arg as *mut FutureObj<'static, ()>) };
+  esp_idf_svc::hal::task::block_on(*future);
 }
