@@ -230,11 +230,13 @@ extern "C" fn on_gap_event(event: *mut sys::ble_gap_event, arg: *mut c_void) -> 
   let event = match ble::GapEvent::try_from(unsafe { &*event }) {
     Ok(e) => e,
     Err(e) => {
-      ::log::error!("Failed to parse GAP event: {:?}", e);
+      log::error!("Failed to parse GAP event: {:?}", e);
       return 0;
     }
   };
   let state: &ClientState = unsafe { &*arg.cast() };
+
+  log::trace!("GAP event: {:?}", event);
 
   match event {
     ble::GapEvent::Connected {

@@ -26,7 +26,7 @@ use futures::{
   future::{self, BoxFuture},
 };
 use hashbrown::{DefaultHashBuilder, HashMap};
-use log::{debug, error, warn};
+use log::{debug, error, trace, warn};
 use tokio::sync::broadcast;
 
 use crate::{
@@ -107,10 +107,10 @@ impl HardwareSpecializer for BleHardwareSpecializer {
             continue;
           }
 
-          debug!("Found required service {} {:?}", service.uuid, service);
+          trace!("Found required service {} {:?}", service.uuid, service);
           for (chr_name, chr_uuid) in proto_service.iter() {
             if let Some(chr) = service.characteristics.iter().find(|c| c.uuid == *chr_uuid) {
-              debug!(
+              trace!(
                 "Found characteristic {} for endpoint {}",
                 chr.uuid, *chr_name
               );
@@ -194,6 +194,7 @@ impl BleHardware {
           match device_events.recv().await {
             Ok(Ok(event)) => match event {
               ClientEvent::Notification(ble::Notification { attr_handle, data }) => {
+                log::info!("Received notification for attribute handle {}", attr_handle);
                 if let Some(endpoint) = attr_handle_endpoint_map.get(&attr_handle) {
                   event_stream_clone
                     .send(HardwareEvent::Notification(
@@ -205,25 +206,29 @@ impl BleHardware {
                 }
               }
               ClientEvent::Disconnected => {
+                log::info!("Device disconnected");
                 event_stream_clone
                   .send(HardwareEvent::Disconnected(address.clone()))
                   .unwrap();
               }
-              _ => {}
+              _ => {
+                log::info!("Received unknown device event: {:?}", event);
+              }
             },
             Ok(Err(e)) => {
-              error!("Error in device event: {:?}", e);
+              log::error!("Error in device event: {:?}", e);
             }
             Err(e) => {
-              error!("Device event stream closed: {:?}", e);
+              log::error!("Device event stream closed: {:?}", e);
               return;
             }
           }
         }
       },
       c"hardware",
-      16 * 1024,
+      12 * 1024,
       utils::spawn::PRO_CORE,
+      15,
     );
 
     Self {
@@ -258,6 +263,7 @@ impl HardwareInternal for BleHardware {
     &self,
     msg: &HardwareReadCmd,
   ) -> BoxFuture<'static, Result<HardwareReading, ButtplugDeviceError>> {
+    log::debug!("Reading value for endpoint {}", msg.endpoint());
     let characteristic = match self.get_characteristic(&msg.endpoint()) {
       Ok(chr) => chr,
       Err(e) => return err_boxed(e),
@@ -273,37 +279,51 @@ impl HardwareInternal for BleHardware {
     &self,
     msg: &HardwareWriteCmd,
   ) -> BoxFuture<'static, Result<(), ButtplugDeviceError>> {
+    log::debug!("Writing value for endpoint {}", msg.endpoint());
     let characteristic = match self.get_characteristic(&msg.endpoint()) {
       Ok(chr) => chr,
       Err(e) => return err_boxed(e),
     };
     let mut with_response = msg.write_with_response();
-    if with_response
-      && !characteristic.properties.supports_write()
-      && characteristic.properties.supports_write_no_response()
-    {
-      warn!(
-        "Device {} does not support write with response, falling back to write without response",
-        self.name
-      );
-      with_response = false;
-    } else if !with_response
+    if with_response && !characteristic.properties.supports_write() {
+      if characteristic.properties.supports_write_no_response() {
+        warn!(
+          "Device {} does not support write with response, falling back to write without response",
+          self.name
+        );
+        with_response = false;
+      } else {
+        return err_boxed(ButtplugDeviceError::DeviceSpecificError(
+          HardwareSpecificError::HardwareSpecificError(
+            "ble".to_owned(),
+            format!("Device {} does not support write", self.name),
+          )
+          .to_string(),
+        ));
+      }
+    } else if !with_response && !characteristic.properties.supports_write_no_response() {
+      if characteristic.properties.supports_write() {
+        warn!(
+          "Device {} does not support write without response, falling back to write with response",
+          self.name
+        );
+        with_response = true;
+      } else {
+        return err_boxed(ButtplugDeviceError::DeviceSpecificError(
+          HardwareSpecificError::HardwareSpecificError(
+            "ble".to_owned(),
+            format!("Device {} does not support write", self.name),
+          )
+          .to_string(),
+        ));
+      }
+    } else if !characteristic.properties.supports_write()
       && !characteristic.properties.supports_write_no_response()
-      && characteristic.properties.supports_write()
     {
-      warn!(
-        "Device {} does not support write without response, falling back to write with response",
-        self.name
-      );
-      with_response = true;
-    } else {
       return err_boxed(ButtplugDeviceError::DeviceSpecificError(
         HardwareSpecificError::HardwareSpecificError(
           "ble".to_owned(),
-          format!(
-            "Device {} does not support write - no fallback availible",
-            self.name
-          ),
+          format!("Device {} does not support any write mode", self.name),
         )
         .to_string(),
       ));
@@ -326,6 +346,7 @@ impl HardwareInternal for BleHardware {
     &self,
     msg: &HardwareSubscribeCmd,
   ) -> BoxFuture<'static, Result<(), ButtplugDeviceError>> {
+    log::debug!("Subscribing to endpoint {}", msg.endpoint());
     let characteristic = match self.get_characteristic(&msg.endpoint()) {
       Ok(chr) => chr,
       Err(e) => return err_boxed(e),
@@ -340,6 +361,7 @@ impl HardwareInternal for BleHardware {
     &self,
     msg: &HardwareUnsubscribeCmd,
   ) -> BoxFuture<'static, Result<(), ButtplugDeviceError>> {
+    log::debug!("Unsubscribing from endpoint {}", msg.endpoint());
     let characteristic = match self.get_characteristic(&msg.endpoint()) {
       Ok(chr) => chr,
       Err(e) => return err_boxed(e),
@@ -362,6 +384,7 @@ fn err_boxed<T: std::marker::Send + 'static>(
 }
 
 fn to_hardware_err(e: ble::BleError) -> ButtplugDeviceError {
+  log::error!("Device ble error: {e:?}");
   ButtplugDeviceError::DeviceSpecificError(
     HardwareSpecificError::HardwareSpecificError("ble".to_owned(), format!("{e:?}")).to_string(),
   )

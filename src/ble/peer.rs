@@ -60,12 +60,12 @@ impl Peer {
   }
 
   fn complete(&mut self) {
-    log::info!("Peer discovery complete");
+    log::debug!("Peer discovery complete");
     let _ = self.tx.take().unwrap().send(Ok(()));
   }
 
   fn start_discover_services(&mut self, conn_handle: u16) {
-    log::info!("Discovering services");
+    log::debug!("Discovering services");
     unsafe {
       if let Err(error) = esp!(sys::ble_gattc_disc_all_svcs(
         conn_handle,
@@ -80,7 +80,7 @@ impl Peer {
   fn discover_characteristics(&mut self, conn_handle: u16) {
     for service in &self.services {
       if self.current_service_start_handle < service.start_handle {
-        log::debug!("Discovering characteristics for service {:?}", service.uuid);
+        log::trace!("Discovering characteristics for service {:?}", service.uuid);
         self.current_service_start_handle = service.start_handle;
 
         // If start == end then there is no space for characteristics
@@ -113,7 +113,7 @@ impl Peer {
       .unwrap();
     for (i, characteristic) in service.characteristics.iter().enumerate() {
       if self.current_characteristic_start_handle < characteristic.definition_handle {
-        log::debug!(
+        log::trace!(
           "Discovering descriptors for characteristic {:?}",
           characteristic.uuid
         );
@@ -161,7 +161,7 @@ impl Peer {
     let error = unsafe { &*error };
 
     if error.status == sys::BLE_HS_EDONE as u16 {
-      log::debug!(
+      log::trace!(
         "Service discovery finished, found {} services",
         peer.services.len()
       );
@@ -173,7 +173,7 @@ impl Peer {
     if error.status == 0 {
       let service = unsafe { &(*service) };
       let svc = ble::Service::new(service);
-      log::debug!(
+      log::trace!(
         "Discovered service: {:?} ({} - {})",
         svc.uuid,
         svc.start_handle,
@@ -207,7 +207,7 @@ impl Peer {
       for service in &mut peer.services {
         if service.start_handle == peer.current_service_start_handle {
           let characteristic = ble::Characteristic::new(conn_handle, chr);
-          log::debug!(
+          log::trace!(
             "Discovered characteristic: {:?} ({}, {})",
             characteristic.uuid,
             characteristic.definition_handle,
@@ -235,14 +235,14 @@ impl Peer {
     let error = unsafe { &*error };
 
     if error.status == sys::BLE_HS_EDONE as u16 {
-      log::debug!("Descriptor discovery complete");
+      log::trace!("Descriptor discovery complete");
       peer.discover_descriptors(conn_handle);
       return 0;
     }
 
     if error.status == 0 {
       let descriptor = ble::Descriptor::new(unsafe { &*dsc });
-      log::debug!(
+      log::trace!(
         "Discovered descriptor: {:?} ({})",
         descriptor.uuid,
         descriptor.handle

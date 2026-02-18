@@ -1,12 +1,15 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, ffi::c_void};
 
-use esp_idf_svc::sys;
+use esp_idf_svc::sys::{self, esp_nofail};
 use futures::executor::block_on;
 use tokio::sync::broadcast;
 
-use crate::ble::{Address, Discovery, DiscoveryListener};
+use crate::{
+  ble::{self, Address, Discovery, DiscoveryListener},
+  utils,
+};
 
-fn manual_test() {
+pub fn run() {
   log::info!("Starting BLE discovery...");
 
   let (tx, mut rx) = broadcast::channel(16);
@@ -25,7 +28,8 @@ fn manual_test() {
     while let Ok(peripheral) = rx.recv().await {
       log::info!("Received peripheral: {:?}", peripheral);
 
-      if peripheral.name == "^.^" {
+      if peripheral.name == "LVS-Z44226" {
+        // if peripheral.name == "^.^" {
         address = Some(peripheral.address);
         break;
       }
@@ -83,8 +87,20 @@ fn manual_test() {
             },
             async {
               loop {
-                async_io::Timer::after(core::time::Duration::from_secs(5)).await;
-                tx_characteristic.write_no_response(b"DeviceType;").ok();
+                utils::sleep(core::time::Duration::from_secs(5)).await;
+
+                match rx_characteristic.subscribe().await {
+                  Ok(_) => log::info!("Subscribed to RX characteristic"),
+                  Err(e) => log::error!("Failed to subscribe to RX characteristic: {:?}", e),
+                }
+
+                utils::sleep(core::time::Duration::from_secs(5)).await;
+
+                log::info!("Writing sanity check");
+
+                if let Err(e) = tx_characteristic.write(b"DeviceType;").await {
+                  log::error!("Failed to write to TX characteristic: {:?}", e);
+                }
               }
             },
           );

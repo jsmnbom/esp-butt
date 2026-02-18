@@ -8,12 +8,13 @@ use utils::spawn::APP_CORE;
 
 mod ble;
 mod buttplug;
+// mod manual_test;
 mod utils;
 
 fn setup() {
   esp_idf_svc::sys::link_patches();
   tracing_subscriber::fmt()
-    .with_max_level(tracing::Level::DEBUG)
+    .with_max_level(tracing::Level::TRACE)
     .with_timer(utils::log::TimeOnlyTimer {})
     .init();
 
@@ -40,12 +41,13 @@ fn main() -> anyhow::Result<()> {
       loop {
         utils::heap::log_heap();
         v_task_list();
-        async_io::Timer::after(core::time::Duration::from_secs(10)).await;
+        utils::sleep(core::time::Duration::from_secs(1)).await;
       }
     },
     c"report",
     8 * 1024,
     APP_CORE,
+    6,
   );
 
   let (connector, client) = buttplug::create_buttplug().unwrap();
@@ -76,8 +78,10 @@ fn main() -> anyhow::Result<()> {
   })?;
 
   block_on(async {
-    async_io::Timer::after(core::time::Duration::from_secs(5)).await;
+    utils::sleep(core::time::Duration::from_secs(5)).await;
   });
+
+  // manual_test::run();
 
   Ok(())
 }

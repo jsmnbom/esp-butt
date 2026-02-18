@@ -53,7 +53,7 @@ impl Descriptor {
 
 #[derive(Debug, Clone)]
 pub struct Characteristic {
-  conn_handle: u16,
+  pub conn_handle: u16,
   pub uuid: Uuid,
   pub definition_handle: u16,
   pub value_handle: u16,
@@ -74,22 +74,35 @@ impl Characteristic {
   }
 
   pub fn write_no_response(&self, data: &[u8]) -> Result<(), ble::BleError> {
+    log::trace!(
+      "Writing no response to characteristic {:?} with value {:?}",
+      self.uuid,
+      data
+    );
     write_no_response(self.conn_handle, self.value_handle, data)
   }
 
   pub async fn write(&self, data: &[u8]) -> Result<(), ble::BleError> {
+    log::trace!(
+      "Writing to characteristic {:?} with value {:?}",
+      self.uuid,
+      data
+    );
     write_with_response(self.conn_handle, self.value_handle, data).await
   }
 
   pub async fn read(&self) -> Result<Vec<u8>, ble::BleError> {
+    log::trace!("Reading from characteristic {:?}", self.uuid);
     read(self.conn_handle, self.value_handle).await
   }
 
   pub async fn subscribe(&self) -> Result<(), ble::BleError> {
+    log::trace!("Subscribing to characteristic {:?}", self.uuid);
     self.set_notify(&[0x01, 0x00]).await
   }
 
   pub async fn unsubscribe(&self) -> Result<(), ble::BleError> {
+    log::trace!("Unsubscribing from characteristic {:?}", self.uuid);
     self.set_notify(&[0x00, 0x00]).await
   }
 
@@ -99,14 +112,23 @@ impl Characteristic {
       .iter()
       .find(|d| d.uuid == Uuid::from(BluetoothUuid16::new(0x2902)))
       .ok_or(ble::BleError::MissingNotifyDescriptor)?;
-    log::info!(
+    log::trace!(
       "Setting characteristic {:?} desc {:?} with value {:?}",
       self.uuid,
       desc.uuid,
       val
     );
-    write_with_response(self.conn_handle, desc.handle, val).await?;
-    Ok(())
+    match write_with_response(self.conn_handle, desc.handle, val).await {
+      Ok(_) => Ok(()),
+      Err(e) => {
+        log::error!(
+          "Failed to set notify for characteristic {:?}: {:?}",
+          self.uuid,
+          e
+        );
+        Err(e)
+      }
+    }
   }
 }
 
@@ -141,26 +163,13 @@ pub fn write_no_response(
   attr_handle: u16,
   data: &[u8],
 ) -> Result<(), ble::BleError> {
-  if data.len() > ble::utils::get_mtu(conn_handle) as usize {
-    unsafe {
-      esp!(sys::ble_gattc_write_no_rsp_flat(
-        conn_handle,
-        attr_handle,
-        data.as_ptr() as *const c_void,
-        data.len() as u16,
-      ))?
-    }
-  } else {
-    // TODO: Check if this is dropped ever
-    let mbuf = os_mbuf::OsMBuf::from_slice(data).unwrap();
-
-    unsafe {
-      esp!(sys::ble_gattc_write_no_rsp(
-        conn_handle,
-        attr_handle,
-        mbuf.as_raw()
-      ))?
-    }
+  unsafe {
+    esp!(sys::ble_gattc_write_no_rsp_flat(
+      conn_handle,
+      attr_handle,
+      data.as_ptr() as *const c_void,
+      data.len() as u16,
+    ))?
   }
   Ok(())
 }
@@ -171,31 +180,15 @@ pub async fn write_with_response(
   data: &[u8],
 ) -> Result<(), ble::BleError> {
   let (tx, rx) = oneshot::channel::<Result<(), ble::BleError>>();
-  if data.len() > ble::utils::get_mtu(conn_handle) as usize {
-    unsafe {
-      esp!(sys::ble_gattc_write_flat(
-        conn_handle,
-        attr_handle,
-        data.as_ptr() as *const c_void,
-        data.len() as u16,
-        Some(on_gatt_attr_write),
-        Box::into_raw(Box::new(tx)) as *mut c_void,
-      ))?
-    }
-  } else {
-    // TODO: Check if this is dropped ever
-    let mbuf = os_mbuf::OsMBuf::from_slice(data).unwrap();
-
-    unsafe {
-      esp!(sys::ble_gattc_write_long(
-        conn_handle,
-        attr_handle,
-        0,
-        mbuf.as_raw(),
-        Some(on_gatt_attr_write),
-        Box::into_raw(Box::new(tx)) as *mut c_void,
-      ))?
-    }
+  unsafe {
+    esp!(sys::ble_gattc_write_flat(
+      conn_handle,
+      attr_handle,
+      data.as_ptr() as *const c_void,
+      data.len() as u16,
+      Some(on_gatt_attr_write),
+      Box::into_raw(Box::new(tx)) as *mut c_void,
+    ))?
   }
 
   match rx.await {
@@ -230,6 +223,8 @@ extern "C" fn on_gatt_attr_write(
 ) -> i32 {
   let error = unsafe { &*error };
   let arg = unsafe { Box::from_raw(arg as *mut oneshot::Sender<Result<(), ble::BleError>>) };
+
+  log::trace!("GATT write completed with status: {}", error.status);
 
   if error.status == 0 {
     let _ = arg.send(Ok(()));
