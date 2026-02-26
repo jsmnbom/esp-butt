@@ -1,17 +1,12 @@
-use esp_idf_svc::timer::EspTaskTimerService;
+#[cfg(target_os = "espidf")]
+pub mod report;
 
+#[cfg(target_os = "espidf")]
 pub mod heap;
-pub mod log;
-pub mod os_mbuf;
-pub mod ptr;
-pub mod spawn;
 
-pub async fn sleep(duration: core::time::Duration) {
-  EspTaskTimerService::new()
-    .unwrap()
-    .timer_async()
-    .unwrap()
-    .after(duration)
-    .await
-    .unwrap();
-}
+#[cfg(target_os = "espidf")]
+pub mod log;
+
+pub mod task;
+pub mod stream;
+

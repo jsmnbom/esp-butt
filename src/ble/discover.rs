@@ -3,7 +3,7 @@ use std::ffi::c_void;
 use esp_idf_svc::sys::{self, esp_nofail};
 use log::{info, warn};
 
-use crate::{ble, utils::ptr::voidp_to_ref};
+use crate::ble;
 
 pub trait DiscoveryListener {
   fn on_report(&mut self, report: &ble::AdReport);
@@ -85,29 +85,33 @@ impl<'a, L: DiscoveryListener> Discovery<'a, L> {
   }
 
   pub fn stop() {
+    // Safety: ... will leak memory if DiscoveryComplete is not called
     unsafe {
       sys::ble_gap_disc_cancel();
     }
   }
 
   extern "C" fn handle_gap_event(event: *mut sys::ble_gap_event, arg: *mut c_void) -> i32 {
-    let event = match ble::GapEvent::try_from(unsafe { &*event }) {
+    let event = match ble::GapEvent::try_from(event) {
       Ok(e) => e,
       Err(e) => {
         ::log::error!("Failed to parse GAP event: {:?}", e);
         return 0;
       }
     };
-    let discovery = unsafe { voidp_to_ref::<Self>(arg) };
-
     if arg.is_null() {
       warn!("Received null arg pointer in handle_gap_event");
       return -1;
     }
 
+    let discovery = unsafe { &mut *arg.cast::<Self>() };
+
     match event {
       ble::GapEvent::Discovery(ad_report) => discovery.listener.on_report(&ad_report),
-      ble::GapEvent::DiscoveryComplete { .. } => discovery.listener.on_complete(),
+      ble::GapEvent::DiscoveryComplete { .. } => {
+        discovery.listener.on_complete();
+        unsafe { drop(Box::from_raw(arg as *mut Self)) }
+      }
       _ => {
         info!(
           "Received unhandled GAP event while discovering: {:?}",

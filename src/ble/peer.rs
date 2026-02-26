@@ -2,16 +2,14 @@ use std::ffi::c_void;
 use std::marker::PhantomPinned;
 use std::pin::Pin;
 
-use allocator_api2::vec::Vec;
 use esp_idf_svc::sys::{self, esp};
 use tokio::sync::oneshot;
 
 use crate::ble;
-use crate::utils::heap::ExternalMemory;
 
 #[derive(Debug)]
 pub struct Peer {
-  pub services: Vec<ble::Service, ExternalMemory>,
+  pub services: Vec<ble::Service>,
 
   current_service_start_handle: u16,
   current_characteristic_start_handle: u16,
@@ -22,12 +20,10 @@ pub struct Peer {
 }
 
 impl Peer {
-  pub async fn discover_services(
-    conn_handle: u16,
-  ) -> Result<Vec<ble::Service, ExternalMemory>, ble::BleError> {
+  pub async fn discover_services(conn_handle: u16) -> Result<Vec<ble::Service>, ble::BleError> {
     let (tx, rx) = oneshot::channel();
     let mut peer = Box::pin(Self {
-      services: Vec::new_in(ExternalMemory),
+      services: Vec::new(),
       current_service_start_handle: 0,
       current_characteristic_start_handle: 0,
       tx: Some(tx),
@@ -50,7 +46,7 @@ impl Peer {
     self as *const Self as *mut c_void
   }
 
-  fn into_services(self) -> Vec<ble::Service, ExternalMemory> {
+  fn into_services(self) -> Vec<ble::Service> {
     self.services
   }
 

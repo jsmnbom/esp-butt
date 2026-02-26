@@ -1,104 +1,178 @@
-use std::ffi::{CStr, c_char};
-
-use buttplug_client::ButtplugClientEvent;
-use esp_idf_svc::{hal::task::block_on, sys};
-use futures::StreamExt;
-use log::info;
-use utils::spawn::APP_CORE;
-
-mod ble;
+mod app;
 mod buttplug;
-// mod manual_test;
 mod utils;
 
-fn setup() {
-  esp_idf_svc::sys::link_patches();
-  tracing_subscriber::fmt()
-    .with_max_level(tracing::Level::TRACE)
-    .with_timer(utils::log::TimeOnlyTimer {})
-    .init();
+#[cfg(target_os = "espidf")]
+mod ble;
 
-  unsafe {
-    esp_idf_svc::sys::esp_vfs_eventfd_register(&esp_idf_svc::sys::esp_vfs_eventfd_config_t {
-      max_fds: 4,
-    });
-  }
+#[cfg(target_os = "espidf")]
+mod hw;
+
+#[cfg(not(target_os = "espidf"))]
+#[path = "hw_mock/mod.rs"]
+mod hw;
+
+#[cfg(target_os = "espidf")]
+fn setup_logging() {
+  tracing_log::LogTracer::init().unwrap();
+
+  utils::log::Subscriber::new(tracing::Level::DEBUG)
+    .with_filter("esp_idf_svc::timer", tracing::Level::WARN)
+    .with_filter("buttplug", tracing::Level::INFO)
+    .install();
 }
 
-fn main() -> anyhow::Result<()> {
-  setup();
+#[cfg(not(target_os = "espidf"))]
+#[global_allocator]
+static GLOBAL: tracing_tracy::client::ProfiledAllocator<std::alloc::System> =
+  tracing_tracy::client::ProfiledAllocator::new(std::alloc::System, 100);
 
-  utils::heap::log_heap();
-  v_task_list();
+#[cfg(not(target_os = "espidf"))]
+fn setup_logging() {
+  use std::io;
+  use std::io::Write;
+
+  use tracing_subscriber::{fmt::MakeWriter, layer::SubscriberExt};
+
+  tracing_log::LogTracer::init().unwrap();
+
+  struct CarriageReturnWriter<W: Write> {
+    writer: W,
+  }
+
+  impl<W: Write> Write for CarriageReturnWriter<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+      match self.writer.write(buf) {
+        Ok(n) => {
+          // if we wrote the whole buffer, also write a carriage return to return to the beginning of the line
+          if n == buf.len() {
+            self.writer.write_all(b"\r")?;
+          }
+          Ok(n)
+        }
+        Err(e) => Err(e),
+      }
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+      self.writer.flush()
+    }
+  }
+
+  struct CustomMakeWriter;
+
+  impl<'a> MakeWriter<'a> for CustomMakeWriter {
+    type Writer = CarriageReturnWriter<io::Stdout>;
+
+    fn make_writer(&'a self) -> Self::Writer {
+      CarriageReturnWriter {
+        writer: io::stdout(),
+      }
+    }
+  }
+
+  tracing::subscriber::set_global_default(
+    tracing_subscriber::fmt()
+      .with_writer(CustomMakeWriter)
+      .finish()
+      .with(tracing_tracy::TracyLayer::default()),
+  )
+  .unwrap();
+}
+
+#[cfg(target_os = "espidf")]
+fn main() -> anyhow::Result<()> {
+  esp_idf_svc::sys::link_patches();
+  setup_logging();
 
   ble::init();
+  hw::init()?;
+  // buttplug::init();
+
+  // utils::report::start_reporting(core::time::Duration::from_secs(5));
+
+  log::info!("Hello, world!");
+
+  let peripherals = esp_idf_svc::hal::peripherals::Peripherals::take().unwrap();
+
+  let sliders = hw::Sliders::new(
+    peripherals.adc1,
+    (peripherals.pins.gpio1, peripherals.pins.gpio2),
+  )?;
+
+  let encoder = hw::Encoder::new(
+    peripherals.pins.gpio9,
+    peripherals.pins.gpio8,
+    peripherals.pins.gpio7,
+  )?;
+
+  let display = hw::Display::new(
+    peripherals.i2c0,
+    peripherals.pins.gpio5,
+    peripherals.pins.gpio6,
+  )?;
+
+  let app = app::AppBuilder {
+    sliders,
+    encoder,
+    display,
+  }
+  .build();
+
+  esp_idf_svc::hal::task::block_on(async move { app.main().await })
+}
+
+#[cfg(not(target_os = "espidf"))]
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+  use std::io::{self, Write};
+
+  use crossterm::{
+    execute,
+    terminal,
+    cursor
+  };
+
+  terminal::enable_raw_mode()?;
+
+  execute!(
+    io::stdout(),
+    cursor::Hide,
+    terminal::Clear(terminal::ClearType::All)
+  )?;
+
+  execute!(io::stdout(), cursor::MoveTo(0, 0))?;
+  let (columns, rows) = terminal::size()?;
+  write!(io::stdout(), "\x1B[12;{}r", rows)?;
+  execute!(io::stdout(), cursor::MoveTo(0, 12))?;
+  io::stdout().flush()?;
+
+  setup_logging();
+
   buttplug::init();
 
   log::info!("Hello, world!");
 
-  utils::spawn::spawn(
-    async {
-      loop {
-        utils::heap::log_heap();
-        v_task_list();
-        utils::sleep(core::time::Duration::from_secs(1)).await;
-      }
-    },
-    c"report",
-    8 * 1024,
-    APP_CORE,
-    6,
-  );
+  let sliders = hw::Sliders::new().unwrap();
+  let encoder = hw::Encoder::new().unwrap();
+  let display = hw::Display::new().unwrap();
 
-  let (connector, client) = buttplug::create_buttplug().unwrap();
-
-  let mut event_stream = client.event_stream();
-
-  block_on(async {
-    info!("client.connect(connector).await");
-    client.connect(connector).await?;
-    info!("Client connected successfully!");
-
-    // Start scanning - this just sends a message and returns
-    info!("Starting BLE scan...");
-    client.start_scanning().await?;
-    info!("BLE scan started.");
-
-    // Listen for events indefinitely
-    info!("Listening for device events...");
-    while let Some(event) = event_stream.next().await {
-      info!("Received event: {:?}", event);
-      if let ButtplugClientEvent::DeviceAdded(device) = event {
-        info!("Device {} connected!", device.name());
-        // You can interact with the device here
-      }
-    }
-
-    Ok::<(), anyhow::Error>(())
-  })?;
-
-  block_on(async {
-    utils::sleep(core::time::Duration::from_secs(5)).await;
-  });
-
-  // manual_test::run();
-
-  Ok(())
-}
-
-fn v_task_list() {
-  const BUFFER_SIZE: usize = 1024;
-  let mut buffer =
-    allocator_api2::vec::Vec::with_capacity_in(BUFFER_SIZE, utils::heap::ExternalMemory);
-  let c_buffer: *mut c_char = buffer.as_mut_ptr() as *mut c_char;
-
-  unsafe {
-    sys::vTaskList(c_buffer);
+  let app = app::AppBuilder {
+    sliders,
+    encoder,
+    display,
   }
+  .build();
 
-  let c_str = unsafe { CStr::from_ptr(c_buffer) };
-  match c_str.to_str() {
-    Ok(rust_string) => println!("Task list:\n{}", rust_string),
-    Err(err) => eprintln!("Failed to convert CStr to &str: {}", err),
-  }
+  let result = app.main().await;
+
+  execute!(
+    io::stdout(),
+    cursor::Show,
+    terminal::Clear(terminal::ClearType::All)
+  )?;
+  write!(io::stdout(), "\x1B[r")?;
+  terminal::disable_raw_mode()?;
+
+  result
 }

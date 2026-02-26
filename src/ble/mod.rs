@@ -1,4 +1,3 @@
-use bt_hci::FromHciBytesError;
 use esp_idf_svc::sys;
 
 mod address;
@@ -32,15 +31,6 @@ pub enum BleError {
   Internal,
   EspError(sys::EspError),
   NimbleError(u16),
-}
-
-impl From<FromHciBytesError> for BleError {
-  fn from(value: FromHciBytesError) -> Self {
-    match value {
-      FromHciBytesError::InvalidSize => Self::InvalidSize,
-      FromHciBytesError::InvalidValue => Self::InvalidValue,
-    }
-  }
 }
 
 impl From<sys::EspError> for BleError {

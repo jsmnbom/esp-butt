@@ -1,5 +1,5 @@
-use bt_hci::uuid::{BluetoothUuid16, BluetoothUuid32, BluetoothUuid128};
-use esp_idf_svc::sys::{self, esp};
+use btuuid::{BluetoothUuid16, BluetoothUuid32, BluetoothUuid128};
+use esp_idf_svc::sys::{self, esp, esp_nofail};
 use uuid::Uuid;
 
 use crate::ble;
@@ -10,10 +10,6 @@ pub fn get_own_address_type() -> Result<u8, ble::BleError> {
     esp!(sys::ble_hs_id_infer_auto(0, &mut own_addr_type))?;
   }
   Ok(own_addr_type)
-}
-
-pub fn get_mtu(conn_handle: u16) -> u16 {
-  unsafe { sys::ble_att_mtu(conn_handle) }
 }
 
 pub fn uuid_from_any_t(uuid: &sys::ble_uuid_any_t) -> Uuid {
@@ -37,4 +33,25 @@ pub fn uuid128(bytes: &[u8; 16]) -> Result<Uuid, ble::BleError> {
   Ok(Uuid::from(
     BluetoothUuid128::from_le_slice(bytes).map_err(|_| ble::BleError::InvalidValue)?,
   ))
+}
+
+pub fn os_mbuf_to_vec(mbuf_ptr: *mut sys::os_mbuf) -> Vec<u8> {
+  if mbuf_ptr.is_null() {
+    return Vec::new();
+  }
+
+  let len = unsafe { sys::os_mbuf_len(mbuf_ptr) };
+
+  let mut buf = Vec::with_capacity(len as _);
+
+  unsafe {
+    esp_nofail!(sys::ble_hs_mbuf_to_flat(
+      mbuf_ptr,
+      buf.as_mut_ptr() as _,
+      buf.capacity() as _,
+      std::ptr::null_mut()
+    ));
+    buf.set_len(len as _);
+  }
+  buf
 }

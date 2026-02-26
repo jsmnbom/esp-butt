@@ -1,26 +1,18 @@
 use std::{
-  collections::HashMap,
   ffi::c_void,
-  sync::{
-    Mutex,
-    atomic::{AtomicU16, Ordering},
-  },
+  sync::atomic::{AtomicU16, Ordering},
 };
 
-use allocator_api2::vec::Vec;
 use esp_idf_svc::sys::{self, esp, esp_nofail};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
-use crate::{
-  ble,
-  utils::{heap::ExternalMemory, os_mbuf},
-};
+use crate::ble;
 
 #[derive(Debug, Clone)]
 pub struct Notification {
   pub attr_handle: u16,
-  pub data: std::vec::Vec<u8>,
+  pub data: Vec<u8>,
 }
 
 #[derive(Debug, Clone)]
@@ -144,7 +136,6 @@ impl ClientConnector {
     let state = Box::new(ClientState {
       conn_handle: AtomicU16::new(0),
       tx,
-      handle_to_uuid: Mutex::new(HashMap::new()),
     });
     let state_ptr = state.as_ref() as *const _ as *mut c_void;
 
@@ -167,15 +158,6 @@ impl ClientConnector {
             let services =
               ble::Peer::discover_services(state.conn_handle.load(Ordering::SeqCst)).await?;
 
-            {
-              let mut map = state.handle_to_uuid.lock().unwrap();
-              for service in &services {
-                for characteristic in &service.characteristics {
-                  map.insert(characteristic.value_handle, characteristic.uuid);
-                }
-              }
-            }
-
             let client = Client {
               state,
               address: self.address,
@@ -196,14 +178,13 @@ impl ClientConnector {
 pub struct ClientState {
   conn_handle: AtomicU16,
   tx: broadcast::Sender<Result<ClientEvent, ble::BleError>>,
-  handle_to_uuid: Mutex<HashMap<u16, Uuid>>,
 }
 
 #[derive(Debug)]
 pub struct Client {
   state: Box<ClientState>,
   address: ble::Address,
-  services: Vec<ble::Service, ExternalMemory>,
+  services: Vec<ble::Service>,
 }
 
 impl Client {
@@ -281,11 +262,7 @@ extern "C" fn on_gap_event(event: *mut sys::ble_gap_event, arg: *mut c_void) -> 
     ble::GapEvent::NotifyRx {
       attr_handle, om, ..
     } => {
-      let mbuf = os_mbuf::OsMBuf(om);
-      let data_slice = mbuf.as_flat();
-      // Unfortunately needs to be std::vec::Vec so we can pass it to buttplug
-      let mut data = std::vec::Vec::with_capacity(data_slice.as_slice().len());
-      data.extend_from_slice(data_slice.as_slice());
+      let data = ble::utils::os_mbuf_to_vec(om);
 
       let notification = Notification { attr_handle, data };
       let _ = state.tx.send(Ok(ClientEvent::Notification(notification)));

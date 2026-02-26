@@ -62,6 +62,19 @@ pub enum GapEvent<'a> {
   },
 }
 
+impl TryFrom<*mut sys::ble_gap_event> for GapEvent<'static> {
+  type Error = ble::BleError;
+
+  fn try_from(value: *mut sys::ble_gap_event) -> Result<Self, Self::Error> {
+    if value.is_null() {
+      warn!("Received null event pointer");
+      return Err(ble::BleError::Internal);
+    }
+    let event = unsafe { &*value };
+    event.try_into()
+  }
+}
+
 impl<'a> TryFrom<&'a sys::ble_gap_event> for GapEvent<'a> {
   type Error = ble::BleError;
 

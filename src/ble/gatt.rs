@@ -1,15 +1,12 @@
 use std::ffi::c_void;
 
-use allocator_api2::vec::Vec;
 use bitflags::bitflags;
-use bt_hci::uuid::BluetoothUuid16;
+use btuuid::BluetoothUuid16;
 use esp_idf_svc::sys::{self, esp};
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use crate::ble;
-use crate::utils::heap::ExternalMemory;
-use crate::utils::os_mbuf::{self, OsMBuf};
 
 bitflags! {
   #[repr(transparent)]
@@ -58,7 +55,7 @@ pub struct Characteristic {
   pub definition_handle: u16,
   pub value_handle: u16,
   pub properties: CharacteristicProperties,
-  pub descriptors: Vec<Descriptor, ExternalMemory>,
+  pub descriptors: Vec<Descriptor>,
 }
 
 impl Characteristic {
@@ -69,7 +66,7 @@ impl Characteristic {
       definition_handle: value.def_handle,
       value_handle: value.val_handle,
       properties: CharacteristicProperties::from_bits(value.properties).unwrap(),
-      descriptors: Vec::new_in(ExternalMemory),
+      descriptors: Vec::new(),
     }
   }
 
@@ -137,7 +134,7 @@ pub struct Service {
   pub uuid: Uuid,
   pub start_handle: u16,
   pub end_handle: u16,
-  pub characteristics: Vec<Characteristic, ExternalMemory>,
+  pub characteristics: Vec<Characteristic>,
 }
 
 impl Service {
@@ -153,7 +150,7 @@ impl Service {
       uuid: ble::utils::uuid_from_any_t(&value.uuid),
       start_handle: value.start_handle,
       end_handle: value.end_handle,
-      characteristics: Vec::new_in(ExternalMemory),
+      characteristics: Vec::new(),
     }
   }
 }
@@ -248,10 +245,7 @@ extern "C" fn on_gatt_attr_read(
     if error.status == 0
       && let Some(attr) = unsafe { attr.as_ref() }
     {
-      let mut data = Vec::new();
-      for om in OsMBuf(attr.om).iter() {
-        data.extend_from_slice(om.as_slice());
-      }
+      let data = ble::utils::os_mbuf_to_vec(attr.om);
 
       let _ = arg.send(Ok(data));
     }

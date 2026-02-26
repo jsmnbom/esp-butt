@@ -14,6 +14,7 @@ use buttplug_server::device::hardware::communication::{
 };
 use futures::FutureExt;
 use log::trace;
+use rustc_hash::FxBuildHasher;
 use tokio::sync::mpsc::Sender;
 
 use super::hardware::BleHardwareConnector;
@@ -34,7 +35,7 @@ impl HardwareCommunicationManagerBuilder for BleCommunicationManagerBuilder {
 pub struct BleCommunicationManager {
   sender: Sender<HardwareCommunicationManagerEvent>,
   scanning_status: Arc<AtomicBool>,
-  peripherals: HashMap<ble::Address, ble::PeripheralProperties>,
+  peripherals: HashMap<ble::Address, ble::PeripheralProperties, FxBuildHasher>,
 }
 
 impl BleCommunicationManager {
@@ -42,7 +43,7 @@ impl BleCommunicationManager {
     Self {
       sender,
       scanning_status: Arc::new(AtomicBool::new(false)),
-      peripherals: HashMap::new(),
+      peripherals: HashMap::with_capacity_and_hasher(64, FxBuildHasher),
     }
   }
 

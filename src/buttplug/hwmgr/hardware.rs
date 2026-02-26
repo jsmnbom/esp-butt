@@ -25,13 +25,12 @@ use futures::{
   FutureExt,
   future::{self, BoxFuture},
 };
-use hashbrown::{DefaultHashBuilder, HashMap};
-use log::{debug, error, trace, warn};
+use log::{error, trace, warn};
 use tokio::sync::broadcast;
 
 use crate::{
   ble::{self, ClientEvent},
-  utils::{self, heap::ExternalMemory},
+  utils,
 };
 
 #[derive(Debug)]
@@ -52,7 +51,7 @@ impl HardwareConnector for BleHardwareConnector {
   fn specifier(&self) -> ProtocolCommunicationSpecifier {
     ProtocolCommunicationSpecifier::BluetoothLE(BluetoothLESpecifier::new_from_device(
       &self.properties.name,
-      &self.properties.manufacturer_data,
+      self.properties.manufacturer_data.clone(),
       &self.properties.services,
     ))
   }
@@ -93,8 +92,8 @@ impl HardwareSpecializer for BleHardwareSpecializer {
     &mut self,
     specifiers: &[ProtocolCommunicationSpecifier],
   ) -> Result<Hardware, ButtplugDeviceError> {
-    let mut endpoint_characteristic_map = HashMap::new_in(ExternalMemory);
-    let mut attr_handle_endpoint_map = HashMap::new_in(ExternalMemory);
+    let mut endpoint_characteristic_map = Vec::new();
+    let mut attr_handle_endpoint_map = Vec::new();
     let device = self.device.take().unwrap();
 
     if let Some(ProtocolCommunicationSpecifier::BluetoothLE(btle)) = specifiers
@@ -114,8 +113,8 @@ impl HardwareSpecializer for BleHardwareSpecializer {
                 "Found characteristic {} for endpoint {}",
                 chr.uuid, *chr_name
               );
-              endpoint_characteristic_map.insert(*chr_name, chr.clone());
-              attr_handle_endpoint_map.insert(chr.value_handle, *chr_name);
+              endpoint_characteristic_map.push((*chr_name, chr.clone()));
+              attr_handle_endpoint_map.push((chr.value_handle, *chr_name));
             } else {
               error!(
                 "Characteristic {} ({}) not found, may cause issues in connection.",
@@ -140,10 +139,10 @@ impl HardwareSpecializer for BleHardwareSpecializer {
 
     let name = self.name.clone().to_string();
     let address = format!("{}", device.address());
-    let endpoints_list = endpoint_characteristic_map
-      .keys()
-      .cloned()
-      .collect::<Vec<Endpoint>>();
+    let mut endpoints_list = Vec::with_capacity(endpoint_characteristic_map.len());
+    for (endpoint, _) in endpoint_characteristic_map.iter() {
+      endpoints_list.push(*endpoint);
+    }
 
     let device_internal_impl = BleHardware::new(
       device,
@@ -163,24 +162,19 @@ impl HardwareSpecializer for BleHardwareSpecializer {
 }
 
 struct BleHardware {
+  #[allow(dead_code)]
   device: ble::Client,
   name: CompactString,
   event_stream: broadcast::Sender<HardwareEvent>,
-  endpoint_characteristic_map:
-    HashMap<Endpoint, ble::Characteristic, DefaultHashBuilder, ExternalMemory>,
+  endpoint_characteristic_map: Vec<(Endpoint, ble::Characteristic)>,
 }
 
 impl BleHardware {
   pub fn new(
     device: ble::Client,
     name: CompactString,
-    endpoint_characteristic_map: HashMap<
-      Endpoint,
-      ble::Characteristic,
-      DefaultHashBuilder,
-      ExternalMemory,
-    >,
-    attr_handle_endpoint_map: HashMap<u16, Endpoint, DefaultHashBuilder, ExternalMemory>,
+    endpoint_characteristic_map: Vec<(Endpoint, ble::Characteristic)>,
+    attr_handle_endpoint_map: Vec<(u16, Endpoint)>,
   ) -> Self {
     let (event_stream, _) = broadcast::channel(16);
     let event_stream_clone = event_stream.clone();
@@ -188,14 +182,18 @@ impl BleHardware {
     let mut device_events = device.events();
     let address = format!("{}", device.address());
 
-    utils::spawn::spawn(
+    utils::task::spawn(
       async move {
         loop {
           match device_events.recv().await {
             Ok(Ok(event)) => match event {
               ClientEvent::Notification(ble::Notification { attr_handle, data }) => {
                 log::info!("Received notification for attribute handle {}", attr_handle);
-                if let Some(endpoint) = attr_handle_endpoint_map.get(&attr_handle) {
+
+                if let Some((_, endpoint)) = attr_handle_endpoint_map
+                  .iter()
+                  .find(|(handle, _)| *handle == attr_handle)
+                {
                   event_stream_clone
                     .send(HardwareEvent::Notification(
                       address.clone(),
@@ -227,7 +225,7 @@ impl BleHardware {
       },
       c"hardware",
       12 * 1024,
-      utils::spawn::PRO_CORE,
+      utils::task::Core::Pro,
       15,
     );
 
@@ -243,8 +241,12 @@ impl BleHardware {
     &self,
     endpoint: &Endpoint,
   ) -> Result<ble::Characteristic, ButtplugDeviceError> {
-    match self.endpoint_characteristic_map.get(endpoint) {
-      Some(chr) => Ok(chr.clone()),
+    match self
+      .endpoint_characteristic_map
+      .iter()
+      .find(|(e, _)| e == endpoint)
+    {
+      Some((_, chr)) => Ok(chr.clone()),
       None => {
         return Err(ButtplugDeviceError::InvalidEndpoint(endpoint.to_string()));
       }

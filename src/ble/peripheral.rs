@@ -1,4 +1,3 @@
-use smallvec::SmallVec;
 use uuid::Uuid;
 
 use crate::ble;
@@ -8,8 +7,8 @@ pub struct PeripheralProperties {
   pub address: ble::Address,
   pub rssi: i8,
   pub name: compact_str::CompactString,
-  pub manufacturer_data: SmallVec<[(u16, SmallVec<[u8; 32]>); 1]>,
-  pub services: SmallVec<[Uuid; 4]>,
+  pub manufacturer_data: Vec<(u16, Vec<u8>)>,
+  pub services: Vec<Uuid>,
 }
 
 impl PeripheralProperties {
@@ -18,8 +17,8 @@ impl PeripheralProperties {
       address,
       rssi,
       name: compact_str::CompactString::new(""),
-      manufacturer_data: SmallVec::new(),
-      services: smallvec::SmallVec::new(),
+      manufacturer_data: Vec::new(),
+      services: Vec::new(),
     }
   }
 
@@ -44,9 +43,9 @@ impl PeripheralProperties {
               return Ok(());
             }
           }
-          self
-            .manufacturer_data
-            .push((company, SmallVec::from_slice(payload)));
+          let mut data = Vec::new();
+          data.extend_from_slice(payload);
+          self.manufacturer_data.push((company, data));
         }
         ble::AdStructure::ServiceUuids16(uuids) => {
           for uuid in uuids {
