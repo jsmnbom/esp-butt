@@ -53,7 +53,6 @@ impl Encoder {
         let mut slider = 0;
         let mut slider_value = String::new();
 
-
         loop {
           match reader.next().await {
             Some(Ok(event)) => match event {
@@ -65,14 +64,13 @@ impl Encoder {
                 }
 
                 if let Some(event) = match key.code {
-                    KeyCode::Up => Some(AppEvent::Navigation(NavigationEvent::Up)),
-                    KeyCode::Down => Some(AppEvent::Navigation(NavigationEvent::Down)),
-                    KeyCode::Enter => Some(AppEvent::Navigation(NavigationEvent::Select)),
-                    _ => None,
-                  } {
-                    tx.send(event).ok();
-                  }
-                
+                  KeyCode::Up => Some(AppEvent::Navigation(NavigationEvent::Up)),
+                  KeyCode::Down => Some(AppEvent::Navigation(NavigationEvent::Down)),
+                  KeyCode::Enter => Some(AppEvent::Navigation(NavigationEvent::Select)),
+                  _ => None,
+                } {
+                  tx.send(event).ok();
+                }
 
                 match state {
                   State::Idle => {
@@ -83,7 +81,7 @@ impl Encoder {
                         state = State::Slider;
                       }
                     }
-                  },
+                  }
                   State::Slider => {
                     if let KeyCode::Char(c) = key.code {
                       if c.is_ascii_digit() {
@@ -97,16 +95,9 @@ impl Encoder {
                         state = State::Idle;
                       }
                     }
-                  },
+                  }
                 }
               }
-
-
-               
-
-                  
-                
-              
 
               _ => {}
             },
@@ -131,7 +122,7 @@ pub mod display {
     terminal::{WindowSize, window_size},
   };
   use embedded_graphics::{Pixel, pixelcolor::BinaryColor, prelude::*};
-use image::{DynamicImage, GenericImageView};
+  use image::{DynamicImage, GenericImageView};
 
   const WIDTH: u32 = 128;
   const HEIGHT: u32 = 64;
@@ -166,7 +157,12 @@ use image::{DynamicImage, GenericImageView};
     }
 
     fn max_display_size(&self) -> anyhow::Result<(u16, u16)> {
-      let WindowSize { columns, rows, width, height } = window_size()?;
+      let WindowSize {
+        columns,
+        rows,
+        width,
+        height,
+      } = window_size()?;
       let cell_size: (u16, u16) = (width / columns, height / rows);
       return Ok((cell_size.0 * columns, cell_size.1 * 10));
     }
@@ -195,10 +191,13 @@ use image::{DynamicImage, GenericImageView};
     }
 
     pub fn flush(&mut self) -> anyhow::Result<()> {
-      execute!(io::stdout(), SavePosition, crossterm::cursor::MoveTo(0, 0))?;
-      io::stdout().flush()?;
+      let mut stdout = io::stdout().lock();
 
-      println!(
+      execute!(stdout, SavePosition, crossterm::cursor::MoveTo(0, 0))?;
+      stdout.flush()?;
+
+      writeln!(
+        stdout,
         "{}",
         kitty_image::WrappedCommand::new(kitty_image::Command::new(kitty_image::Action::Delete(
           kitty_image::ActionDelete {
@@ -206,11 +205,15 @@ use image::{DynamicImage, GenericImageView};
             target: kitty_image::DeleteTarget::Cursor
           }
         )))
-      );
+      )?;
 
       self.update_image();
       let (max_width, max_height) = self.max_display_size()?;
-      let img = DynamicImage::ImageRgb8(self.img.clone()).resize(max_width as u32, max_height as u32, image::imageops::FilterType::Nearest);
+      let img = DynamicImage::ImageRgb8(self.img.clone()).resize(
+        max_width as u32,
+        max_height as u32,
+        image::imageops::FilterType::Nearest,
+      );
       let (width, height) = img.dimensions();
 
       let action = kitty_image::Action::TransmitAndDisplay(
@@ -227,9 +230,8 @@ use image::{DynamicImage, GenericImageView};
       let command = kitty_image::Command::with_payload_from_image(action, &img);
       let command = kitty_image::WrappedCommand::new(command);
 
-      println!("{command}");
-      io::stdout().flush()?;
-      execute!(io::stdout(), crossterm::cursor::RestorePosition)?;
+      writeln!(stdout, "{}", command)?;
+      execute!(stdout, crossterm::cursor::RestorePosition)?;
 
       Ok(())
     }

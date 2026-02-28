@@ -1,5 +1,6 @@
 mod app;
 mod buttplug;
+mod img;
 mod utils;
 
 #[cfg(target_os = "espidf")]
@@ -127,11 +128,7 @@ fn main() -> anyhow::Result<()> {
 async fn main() -> anyhow::Result<()> {
   use std::io::{self, Write};
 
-  use crossterm::{
-    execute,
-    terminal,
-    cursor
-  };
+  use crossterm::{cursor, execute, terminal};
 
   terminal::enable_raw_mode()?;
 
