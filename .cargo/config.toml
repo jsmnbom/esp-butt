@@ -1,6 +1,6 @@
 [build]
-#target = "xtensa-esp32s3-espidf"
-target = "x86_64-unknown-linux-gnu"
+target = "xtensa-esp32s3-espidf"
+# target = "x86_64-unknown-linux-gnu"
 
 [target.xtensa-esp32s3-espidf]
 linker = "ldproxy"
@@ -8,11 +8,6 @@ runner = "espflash flash --monitor"
 rustflags = [
   "--cfg",
   "espidf_time64",
-  "--remap-path-prefix=/home/jas/dev/embedded/esp-butt=/esp-butt/",
-  "--remap-path-prefix=/home/jas/dev/embedded/buttplug/crates=/",
-  "--remap-path-prefix=/home/jas/.local/share/cargo/git/checkouts=/",
-  "--remap-path-prefix=/home/jas/.local/share/cargo/registry/src/index.crates.io-1949cf8c6b5b557f=/",
-  "--remap-path-prefix=/home/jas/.local/share/rustup/toolchains/esp/lib/rustlib/src/rust/library=/rust/"
 ]
 
 [unstable]
@@ -22,4 +17,3 @@ build-std-features = []
 [env]
 MCU = "esp32s3"
 ESP_IDF_VERSION = "v5.3.3"
-ESP_IDF_TOOLS_INSTALL_DIR = "custom:/home/jas/dev/embedded/espressif"

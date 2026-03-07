@@ -1,0 +1,71 @@
+[package]
+name = "esp-butt"
+version = "0.1.0"
+authors = ["Jasmin Bom <jsmnbom@gmail.com>"]
+edition = "2024"
+rust-version = "1.87"
+
+[[bin]]
+name = "esp-butt"
+harness = false # do not use the built-in cargo test harness -> resolve rust-analyzer errors
+
+[features]
+default = []
+
+[dependencies]
+log = "0.4"
+anyhow = { version = "=1.0.101", default-features = false }
+futures = { version = "0.3", default-features = false, features = ["alloc"] }
+futures-concurrency = "7.7.1"
+async-trait = "0.1"
+uuid = "1"
+btuuid = { version = "0.1.1", features = ["uuid"] }
+async-stream = "0.3.6"
+tracing = { version = "0.1.37", default-features = false }
+tracing-log = { version = "0.2.0" }
+serde = { version = "1.0"}
+buttplug_core = { version = "10.0.0", default-features = false}
+buttplug_client = { version = "10.0.0", default-features = false }
+buttplug_server = { version = "10.0.0", default-features = false }
+buttplug_server_device_config = { version = "10.0.0", default-features = false }
+buttplug_client_in_process = { version = "10.0.0", default-features = false }
+postcard = { version = "1.1.3", default-features = false, features = ["use-std"] }
+strum = { version = "0.27", features = ["derive"] }
+compact_str = "0.9"
+smallvec = "1.15"
+bitflags = "2.11"
+rustc-hash = { version = "2.1", default-features = false }
+miniz_oxide = {version="0.8.9"}
+pastey = "0.2.1"
+u8g2-fonts = "0.7.2"
+embedded-graphics = "0.8.2"
+mini-oled = { version = "0.1.3", features = ["embedded-graphics-core"] }
+embedded-hal = { version = "1.0.0" }
+embedded-graphics-core = "0.4.1"
+litemap = "0.8.1"
+serde_describe = "0.2.3"
+
+[target.'cfg(target_os = "espidf")'.dependencies]
+esp-idf-svc = "0.51"
+tokio = { version = "1.49.0", features = ["sync"] }
+
+[target.'cfg(not(target_os = "espidf"))'.dependencies]
+tokio = { version = "1.49.0", features = ["sync", "time", "rt", "rt-multi-thread"] }
+kitty_image = { version = "0.1.0", features = ["image"] }
+image = { version = "0.24.7", default-features = false }
+crossterm = {version =  "0.29.0", features = ["event-stream"] }
+tracing-subscriber = "0.3.22"
+tracing-tracy = "0.11.4"
+buttplug_server_hwmgr_btleplug = { version = "10.0.0", default-features = false }
+
+[build-dependencies]
+embuild = { version = "0.33", features = ["espidf"] }
+anyhow = "=1.0.101"
+buttplug_server_device_config = { version = "10.0.0" }
+postcard = { version = "1.1.3", default-features = false, features = ["use-std"] }
+miniz_oxide = "0.8.9"
+rustc-hash = { version = "2.1", default-features = false }
+image = { version = "0.24.7", default-features = false, features = ["png"] }
+compact_str = "0.9"
+serde_describe = "0.2.3"
+serde = { version = "1.0.228", features = ["derive"] }

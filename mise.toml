@@ -1,0 +1,2 @@
+[env]
+ESP_IDF_TOOLS_INSTALL_DIR = "custom:/home/jas/dev/embedded/espressif"
