@@ -1,5 +1,5 @@
 mod display;
-mod slider;
+pub mod slider;
 mod encoder;
 mod ticker;
 

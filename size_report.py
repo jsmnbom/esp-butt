@@ -1,17 +1,25 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#     "esp_idf_size",
+#     "rich",
+# ]
+# ///
 """
-Demangle and display esp_idf_size JSON2 output as a readable table.
+Demangle and display firmware symbol sizes using esp_idf_size.
 
 Usage:
-    python3 size_report.py [SIZE_JSON] [--top N] [--filter PATTERN] [--sort {total,flash,iram,diram,data}]
+    python3 size_report.py [LINKER_MAP] [--top N] [--filter PATTERN] [--sort {total,flash,iram,diram,data}]
 
-Defaults to size.json in the current directory, top 50 entries sorted by total size.
+Defaults to target/xtensa-esp32s3-espidf/debug/linker.map, top 50 entries sorted by total size.
+The ELF file is auto-detected from the same directory as the map file.
 
 Fully vibe-coded, no gaurantees on code quality or stability. Use at your own risk. Contributions welcome.
 """
 
 import argparse
-import json
 import re
 import shutil
 import subprocess
@@ -23,43 +31,65 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
+try:
+    from esp_idf_size import mapfile as esp_mapfile
+    from esp_idf_size import memorymap
+    from esp_idf_size.elf import Elf as ElfParser
+
+    try:
+        from esp_idf_size.elf import PT_LOAD  # type: ignore[attr-defined]
+    except ImportError:
+        PT_LOAD = 1  # standard ELF constant
+
+    _HAS_ESP_IDF_SIZE = True
+except ImportError:
+    _HAS_ESP_IDF_SIZE = False
+    PT_LOAD = 1
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-CARGO_BIN = Path.home() / ".local" / "share" / "cargo" / "bin" / "rustfilt"
+DEFAULT_MAP = "target/xtensa-esp32s3-espidf/debug/linker.map"
+
+# Memory type names as used by esp_idf_size -> field name in our entry dict
+MEM_TYPE_FIELD: dict[str, str] = {
+    "Flash Code": "flash",
+    "IRAM": "iram",
+    "DIRAM": "diram",
+    "Flash Data": "flash_data",
+}
+
 
 def find_rustfilt() -> str | None:
     found = shutil.which("rustfilt")
     if found:
         return found
-    if CARGO_BIN.exists():
-        return str(CARGO_BIN)
+    import os
+
+    cargo_home = os.environ.get("CARGO_HOME")
+    candidates = []
+    if cargo_home:
+        candidates.append(Path(cargo_home) / "bin" / "rustfilt")
+    candidates.append(Path.home() / ".local" / "share" / "cargo" / "bin" / "rustfilt")
+    for p in candidates:
+        if p.exists():
+            return str(p)
     return None
 
 
-def extract_raw_symbol(key: str) -> str:
-    """Pull the mangled symbol out of a size.json key.
-
-    Key format:  <archive_path>:<object_file>:<section>.<mangled_symbol>
-    e.g.         .../libbuttplug_server.rlib:file.rcgu.o:.text._ZN15foo...E
-    """
-    # Split only on the last colon-separated segment that isn't a path
-    # (paths won't contain colons on Linux, so a simple split works)
-    parts = key.split(":")
-    section_sym = parts[-1]  # ".text._ZNfooE" or ".rodata._ZN…" etc.
-
-    # Prefer a proper mangled symbol (_ZN… legacy or _R… v0)
-    m = re.search(r"(_(?:ZN|R)\S+)", section_sym)
-    if m:
-        return m.group(1)
-
-    # Fallback: strip leading section prefix (.text., .rodata., …) if present
-    m2 = re.match(r"\.\w+\.(.*)", section_sym)
-    if m2:
-        return m2.group(1)
-
-    return section_sym
+def find_elf(directory: Path) -> str | None:
+    """Return the path to the first ELF file found in directory."""
+    for p in sorted(directory.iterdir()):
+        if not p.is_file():
+            continue
+        try:
+            with open(p, "rb") as f:
+                if f.read(4) == b"\x7fELF":
+                    return str(p)
+        except OSError:
+            continue
+    return None
 
 
 def demangle_batch(rustfilt: str, symbols: list[str]) -> list[str]:
@@ -81,15 +111,75 @@ def demangle_batch(rustfilt: str, symbols: list[str]) -> list[str]:
 
 def shorten_obj(obj_path: str) -> str:
     """Return a short human-readable label for the CGU / object file."""
-    # e.g. "buttplug_server.1bpou0oabx1zi686vjx3qkdx4.09266vr.rcgu.o"
-    #  --> "buttplug_server … rcgu"
-    stem = Path(obj_path).stem          # strip .o
-    parts = stem.split(".")
-    if len(parts) >= 2:
-        crate = parts[0]
-        cgu   = parts[-1]               # "rcgu" or similar
-        return f"{crate} ({cgu})"
+    stem = Path(obj_path).stem  # strip last extension (.o or .obj)
+    if stem.endswith(".rcgu"):
+        # Rust CGU: {crate}-{16hexhash}.{...}.rcgu.o
+        # Take the first dot-component and strip the trailing -<hexhash>
+        first = stem.split(".")[0]
+        crate = re.sub(r"-[0-9a-f]{16}$", "", first)
+        return f"{crate}"
+    # C / other object: partition_target.c.obj -> partition_target.c
     return stem
+
+
+def sym_to_raw(sym_name: str) -> str:
+    """Extract the lookup key from a symbol name as stored in the memory map.
+
+    esp_idf_size appends '()' to STT_FUNC symbols and uses the input section
+    name (e.g. '.text._ZN...E') as a fallback when no ELF symbol was matched.
+    Both need to be normalised to the raw mangled name for addr_map lookup.
+    """
+    # Strip trailing '()' added by esp_idf_size for STT_FUNC symbols
+    name = sym_name[:-2] if sym_name.endswith("()") else sym_name
+    # Strip section prefix: ".text._ZN...", ".rodata._ZN...", etc.
+    m = re.match(r"\.[\w.]+\.(_(?:ZN|R)\S*)", name)
+    if m:
+        return m.group(1)
+    return name
+
+
+def build_addr_map(map_file) -> dict[tuple[str, str], int]:
+    """Build (object_file, symbol_name) -> address from a processed MapFile."""
+    result: dict[tuple[str, str], int] = {}
+    for section in map_file.sections:
+        for isec in section.get("input_sections", []):
+            obj = isec.get("object_file", "")
+            for sym in isec.get("symbols", []):
+                addr = sym.get("address", 0)
+                name = sym.get("name", "")
+                if addr and name:
+                    result[(obj, name)] = addr
+    return result
+
+
+def build_file_offset_map(elf_obj: "ElfParser") -> list[tuple[int, int, int, int]]:
+    """Return a list of (vaddr_start, vaddr_end, p_offset, p_filesz) for PT_LOAD
+    segments, used to convert a virtual address to a file offset.
+    Segments where p_filesz == 0 (pure BSS) are excluded.
+    """
+    segments = []
+    for phdr in elf_obj.phdrs:
+        if phdr.p_type != PT_LOAD or phdr.p_filesz == 0:
+            continue
+        segments.append(
+            (
+                phdr.p_vaddr,
+                phdr.p_vaddr + phdr.p_filesz,
+                phdr.p_offset,
+                phdr.p_filesz,
+            )
+        )
+    return segments
+
+
+def vaddr_to_file_offset(vaddr: int, segments: list[tuple[int, int, int, int]]) -> int:
+    """Convert a virtual address to a file offset using PT_LOAD segments.
+    Returns 0 if the address is not backed by a file segment (e.g. BSS).
+    """
+    for vstart, vend, p_offset, _ in segments:
+        if vstart <= vaddr < vend:
+            return vaddr - vstart + p_offset
+    return 0
 
 
 def fmt_bytes(n: int) -> str:
@@ -110,109 +200,179 @@ def fmt_plain(n: int) -> str:
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("size_json", nargs="?", default="size.json",
-                        help="Path to the JSON2 size file (default: size.json)")
-    parser.add_argument("--top", "-n", type=int, default=50, metavar="N",
-                        help="Number of rows to show (default: 50, 0 = all)")
-    parser.add_argument("--filter", "-f", default="", metavar="PATTERN",
-                        help="Case-insensitive substring filter on demangled name")
-    parser.add_argument("--sort", "-s",
-                        choices=["total", "flash", "iram", "diram", "data"],
-                        default="total",
-                        help="Column to sort by (default: total)")
-    parser.add_argument("--bytes", action="store_true",
-                        help="Show raw byte counts instead of human-readable sizes")
-    parser.add_argument("--wide", "-w", action="store_true",
-                        help="Show full demangled names (default: strip leading crate:: prefix)")
-    parser.add_argument("--width", type=int, default=None, metavar="COLS",
-                        help="Override terminal width for the table")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "map_file",
+        nargs="?",
+        default=DEFAULT_MAP,
+        help=f"Path to the linker map file (default: {DEFAULT_MAP})",
+    )
+    parser.add_argument(
+        "--top",
+        "-n",
+        type=int,
+        default=50,
+        metavar="N",
+        help="Number of rows to show (default: 50, 0 = all)",
+    )
+    parser.add_argument(
+        "--filter",
+        "-f",
+        default="",
+        metavar="PATTERN",
+        help="Case-insensitive substring filter on demangled name",
+    )
+    parser.add_argument(
+        "--sort",
+        "-s",
+        choices=["total", "flash", "iram", "diram", "data"],
+        default="total",
+        help="Column to sort by (default: total)",
+    )
+    parser.add_argument(
+        "--bytes",
+        action="store_true",
+        help="Show raw byte counts instead of human-readable sizes",
+    )
+    parser.add_argument(
+        "--width",
+        type=int,
+        default=None,
+        metavar="COLS",
+        help="Override terminal width for the table",
+    )
     args = parser.parse_args()
 
     console = Console(width=args.width)
 
+    if not _HAS_ESP_IDF_SIZE:
+        console.print(
+            "[red]esp_idf_size not found.[/red] Install it or activate the project venv."
+        )
+        sys.exit(1)
+
     # --- locate rustfilt ---
     rustfilt = find_rustfilt()
     if rustfilt is None:
-        console.print("[red]rustfilt not found.[/red] Install it with:\n  cargo install rustfilt")
+        console.print(
+            "[red]rustfilt not found.[/red] Install it with:\n  cargo install rustfilt"
+        )
         sys.exit(1)
 
-    # --- load data ---
-    json_path = Path(args.size_json)
-    if not json_path.exists():
-        console.print(f"[red]File not found:[/red] {json_path}")
+    # --- validate map file ---
+    map_path = Path(args.map_file)
+    if not map_path.exists():
+        console.print(f"[red]Map file not found:[/red] {map_path}")
         sys.exit(1)
 
-    with open(json_path) as fh:
-        data: dict = json.load(fh)
+    # --- find ELF in same directory as map file ---
+    elf_obj = None
+    file_offset_segments: list[tuple[int, int, int, int]] = []
+    elf_path = find_elf(map_path.parent)
+    if elf_path:
+        with console.status("[bold cyan]Loading ELF…[/bold cyan]"):
+            elf_obj = ElfParser(elf_path)
+            file_offset_segments = build_file_offset_map(elf_obj)
+        console.print(
+            f"[dim]ELF: {elf_path} ({len(file_offset_segments)} LOAD segments)[/dim]"
+        )
+    else:
+        console.print(
+            "[yellow]No ELF found next to map file — addresses will be unavailable.[/yellow]"
+        )
 
-    console.print(f"[dim]Loaded {len(data):,} entries from {json_path}[/dim]")
+    # --- build memory map (pass a MapFile so we can read addresses back out) ---
+    map_file_obj = esp_mapfile.MapFile(str(map_path))
+    with console.status("[bold cyan]Parsing linker map…[/bold cyan]"):
+        try:
+            memory_map = memorymap.get(
+                str(map_path), elf=elf_obj, map_file=map_file_obj
+            )
+        except memorymap.MemMapException as exc:
+            console.print(f"[red]Failed to parse map file:[/red] {exc}")
+            sys.exit(1)
 
-    # --- parse entries ---
-    entries = []
-    for key, val in data.items():
-        total_size = val.get("size", 0)
-        if total_size == 0:
+    # Build (object_file, symbol_name) -> address from the processed map file.
+    # This covers both ELF symbols and rodata/bss section-name fallbacks.
+    addr_map = build_addr_map(map_file_obj)
+
+    # --- walk memory map and collect per-symbol entries ---
+    entries_by_key: dict[str, dict] = {}
+    for (
+        mem_type_name,
+        _,
+        _,
+        _,
+        archive_name,
+        _,
+        obj_file_name,
+        _,
+        sym_name,
+        sym_info,
+    ) in memorymap.walk(memory_map):
+        size = sym_info["size"]
+        if not size:
             continue
 
-        mem   = val.get("memory_types", {})
-        flash = mem.get("Flash Code", {}).get("size", 0)
-        iram  = mem.get("IRAM",       {}).get("size", 0)
-        diram = mem.get("DIRAM",      {}).get("size", 0)
-        fdata = mem.get("Flash Data", {}).get("size", 0)
+        entry_key = f"{archive_name}\x00{obj_file_name}\x00{sym_name}"
+        if entry_key not in entries_by_key:
+            # Normalise symbol name for demangling (strip '()' and section prefixes)
+            raw_sym = sym_to_raw(sym_name)
+            entries_by_key[entry_key] = {
+                "raw_sym": raw_sym,
+                "archive": Path(archive_name).name,
+                "obj": shorten_obj(obj_file_name),
+                "total": 0,
+                "flash": 0,
+                "iram": 0,
+                "diram": 0,
+                "flash_data": 0,
+                # Key by (object_file, symbol_name) to avoid collisions across objects
+                "address": addr_map.get((obj_file_name, sym_name), 0),
+            }
+            e = entries_by_key[entry_key]
+            e["file_offset"] = vaddr_to_file_offset(e["address"], file_offset_segments)
 
-        key_parts = key.split(":")
-        archive = Path(key_parts[0]).name if key_parts else ""
-        obj     = key_parts[1]            if len(key_parts) > 1 else ""
+        e = entries_by_key[entry_key]
+        e["total"] += size
+        field = MEM_TYPE_FIELD.get(mem_type_name)
+        if field:
+            e[field] += size
 
-        entries.append({
-            "raw_sym":    extract_raw_symbol(key),
-            "archive":    archive,
-            "obj":        shorten_obj(obj),
-            "total":      total_size,
-            "flash":      flash,
-            "iram":       iram,
-            "diram":      diram,
-            "flash_data": fdata,
-        })
-
-    console.print(f"[dim]Non-zero entries: {len(entries):,}[/dim]\n")
+    entries = list(entries_by_key.values())
+    console.print(f"[dim]Loaded {len(entries):,} symbols from {map_path}[/dim]\n")
 
     # --- demangle in one batch ---
     with console.status("[bold cyan]Demangling symbols…[/bold cyan]"):
         demangled = demangle_batch(rustfilt, [e["raw_sym"] for e in entries])
 
     for entry, name in zip(entries, demangled):
-        full_name = name.strip() or entry["raw_sym"]
-        if not args.wide:
-            # Strip the leading crate path segment to save horizontal space
-            # e.g. "buttplug_server::device::foo" -> "device::foo"
-            parts = full_name.split("::", 1)
-            display_name = parts[1] if len(parts) == 2 and not full_name.startswith("<") else full_name
-        else:
-            display_name = full_name
-        entry["name"] = display_name
-        entry["full_name"] = full_name
+        entry["name"] = name.strip() or entry["raw_sym"]
 
     # --- filter ---
     filt = args.filter.lower()
     if filt:
-        entries = [e for e in entries if filt in e.get("full_name", e["name"]).lower()]
-        console.print(f"[dim]After filter '{args.filter}': {len(entries):,} entries[/dim]\n")
+        entries = [e for e in entries if filt in e["name"].lower()]
+        console.print(
+            f"[dim]After filter '{args.filter}': {len(entries):,} entries[/dim]\n"
+        )
 
     # --- sort ---
     sort_key = {
         "total": "total",
         "flash": "flash",
-        "iram":  "iram",
+        "iram": "iram",
         "diram": "diram",
-        "data":  "flash_data",
+        "data": "flash_data",
     }[args.sort]
     entries.sort(key=lambda e: e[sort_key], reverse=True)
 
     # --- truncate ---
-    top_n   = args.top if args.top > 0 else len(entries)
+    top_n = args.top if args.top > 0 else len(entries)
     visible = entries[:top_n]
 
     # --- build table ---
@@ -225,42 +385,48 @@ def main() -> None:
         header_style="bold cyan",
         highlight=True,
     )
-    table.add_column("#",          style="dim",         justify="right", no_wrap=True)
-    table.add_column("Function",                        min_width=40, max_width=90, overflow="fold")
-    table.add_column("Total",      style="bold yellow", justify="right", no_wrap=True)
-    table.add_column("Flash Code",                      justify="right", no_wrap=True)
-    table.add_column("IRAM",                            justify="right", no_wrap=True)
-    table.add_column("DIRAM",                           justify="right", no_wrap=True)
-    table.add_column("Flash Data",                      justify="right", no_wrap=True)
-    table.add_column("Object",      style="dim",        max_width=35,   overflow="ellipsis", no_wrap=True)
+    table.add_column("#", style="dim", justify="right", no_wrap=True)
+    table.add_column(
+        "Object", style="dim", max_width=20, overflow="ellipsis", no_wrap=True
+    )
+    table.add_column("Function", min_width=40, max_width=None, overflow="fold")
+    table.add_column("Total", style="bold yellow", justify="right", no_wrap=True)
+    table.add_column("Flash Code", justify="right", no_wrap=True)
+    table.add_column("IRAM", justify="right", no_wrap=True)
+    table.add_column("DIRAM", justify="right", no_wrap=True)
+    table.add_column("Flash Data", justify="right", no_wrap=True)
+    table.add_column("Address", style="cyan", justify="right", no_wrap=True)
+    table.add_column("File Range", style="magenta", justify="left", no_wrap=True)
 
     for i, e in enumerate(visible, 1):
-        name      = e["name"]
-        full_name = e.get("full_name", name)
-        # Highlight closures / async state machines in italic
-        if "{{closure}}" in full_name or "{{impl}}" in full_name or "poll" in full_name.lower():
-            name_text = Text(name, style="italic")
+        addr = e.get("address", 0)
+        addr_str = f"0x{addr:08x}" if addr else "-"
+        foff = e.get("file_offset", 0)
+        if foff:
+            foff_end = foff + e["total"]
+            foff_str = f"0x{foff:07x}-0x{foff_end:07x}"
         else:
-            name_text = Text(name)
-
+            foff_str = "-"
         table.add_row(
             str(i),
-            name_text,
+            e["obj"],
+            Text(e["name"]),
             fmt(e["total"]),
             fmt(e["flash"]),
             fmt(e["iram"]),
             fmt(e["diram"]),
             fmt(e["flash_data"]),
-            e["obj"],
+            addr_str,
+            foff_str,
         )
 
     console.print(table)
 
     # --- totals footer ---
-    tot_total = sum(e["total"]      for e in entries)
-    tot_flash = sum(e["flash"]      for e in entries)
-    tot_iram  = sum(e["iram"]       for e in entries)
-    tot_diram = sum(e["diram"]      for e in entries)
+    tot_total = sum(e["total"] for e in entries)
+    tot_flash = sum(e["flash"] for e in entries)
+    tot_iram = sum(e["iram"] for e in entries)
+    tot_diram = sum(e["diram"] for e in entries)
     tot_fdata = sum(e["flash_data"] for e in entries)
 
     console.print(
@@ -273,7 +439,7 @@ def main() -> None:
     )
     console.print(
         f"\n[dim]Tip: --top 0 (all rows)  --filter <name>  "
-        f"--sort flash/iram/diram/data  --wide (full names)  --width COLS[/dim]"
+        f"--sort flash/iram/diram/data  --width COLS[/dim]"
     )
 
 

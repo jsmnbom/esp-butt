@@ -1,6 +1,6 @@
 [build]
-target = "xtensa-esp32s3-espidf"
-# target = "x86_64-unknown-linux-gnu"
+# target = "xtensa-esp32s3-espidf"
+target = "x86_64-unknown-linux-gnu"
 
 [target.xtensa-esp32s3-espidf]
 linker = "ldproxy"
@@ -16,4 +16,4 @@ build-std-features = []
 
 [env]
 MCU = "esp32s3"
-ESP_IDF_VERSION = "v5.3.3"
+ESP_IDF_VERSION = "v5.5.3"

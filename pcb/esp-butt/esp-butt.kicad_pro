@@ -37,9 +37,9 @@
         "other_text_thickness": 0.15,
         "other_text_upright": false,
         "pads": {
-          "drill": 1.0,
-          "height": 1.508,
-          "width": 1.508
+          "drill": 0.0,
+          "height": 1.524,
+          "width": 2.432
         },
         "silk_line_width": 0.1,
         "silk_text_italic": false,
@@ -58,36 +58,7 @@
           "width": 0.0
         }
       ],
-      "drc_exclusions": [
-        [
-          "silk_edge_clearance|100865000|59999000|b93bb504-6974-46e1-9986-0544e3eb83ea|3f4c14e4-8fb5-4a99-8969-e01050115134",
-          ""
-        ],
-        [
-          "silk_edge_clearance|100865000|59999000|b93bb504-6974-46e1-9986-0544e3eb83ea|a0807bb3-bf47-4276-803a-0f3d9678be9f",
-          ""
-        ],
-        [
-          "silk_edge_clearance|100926717|59999999|b93bb504-6974-46e1-9986-0544e3eb83ea|7b38f3bc-ef49-4dab-9181-6e8985d9c74f",
-          ""
-        ],
-        [
-          "silk_edge_clearance|84976000|60000000|b93bb504-6974-46e1-9986-0544e3eb83ea|590ca253-f0dc-4b22-a96c-74469a091a66",
-          ""
-        ],
-        [
-          "silk_edge_clearance|86895000|59999000|b93bb504-6974-46e1-9986-0544e3eb83ea|2723cb4b-a4ea-47a5-8f7f-79f0d635d7e9",
-          ""
-        ],
-        [
-          "silk_edge_clearance|89385000|59999000|b93bb504-6974-46e1-9986-0544e3eb83ea|7f8adebd-452f-4fbc-bc25-c2e552700cbe",
-          ""
-        ],
-        [
-          "silk_edge_clearance|98384000|59999000|b93bb504-6974-46e1-9986-0544e3eb83ea|5c7c5a9a-8ac0-43f0-a782-bacfa11c7c2a",
-          ""
-        ]
-      ],
+      "drc_exclusions": [],
       "meta": {
         "version": 2
       },
@@ -129,8 +100,8 @@
         "padstack": "warning",
         "pth_inside_courtyard": "ignore",
         "shorting_items": "error",
-        "silk_edge_clearance": "warning",
-        "silk_over_copper": "warning",
+        "silk_edge_clearance": "ignore",
+        "silk_over_copper": "ignore",
         "silk_overlap": "warning",
         "skew_out_of_range": "error",
         "solder_mask_bridge": "error",
@@ -539,7 +510,7 @@
       "plot": "out/",
       "pos_files": "esp-butt/",
       "specctra_dsn": "",
-      "step": "esp-butt.step",
+      "step": "../esp-butt.step",
       "svg": "",
       "vrml": ""
     },

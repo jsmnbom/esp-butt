@@ -4,6 +4,24 @@ mod hw;
 mod img;
 mod utils;
 
+// esp_phy's lib_printf.c references vsnprintf from newlib, but LTO breaks that
+// linkage. This stub satisfies the symbol at link time.
+#[cfg(target_os = "espidf")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn vsnprintf(
+  s: *mut core::ffi::c_char,
+  n: usize,
+  _format: *const core::ffi::c_char,
+  _args: *mut core::ffi::c_void,
+) -> core::ffi::c_int {
+  if !s.is_null() && n > 0 {
+    unsafe {
+      *s = 0;
+    }
+  }
+  0
+}
+
 #[cfg(target_os = "espidf")]
 mod ble;
 
@@ -120,11 +138,7 @@ async fn main() -> anyhow::Result<()> {
 
   terminal::enable_raw_mode()?;
 
-  execute!(
-    io::stdout(),
-    cursor::Hide,
-    terminal::Clear(terminal::ClearType::All)
-  )?;
+  execute!(io::stdout(), cursor::Hide,)?;
 
   execute!(io::stdout(), cursor::MoveTo(0, 0))?;
   let (_, rows) = terminal::size()?;
@@ -148,11 +162,7 @@ async fn main() -> anyhow::Result<()> {
 
   let result = app.main().await;
 
-  execute!(
-    io::stdout(),
-    cursor::Show,
-    terminal::Clear(terminal::ClearType::All)
-  )?;
+  execute!(io::stdout(), cursor::Show,)?;
   write!(io::stdout(), "\x1B[r")?;
   terminal::disable_raw_mode()?;
 

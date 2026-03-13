@@ -1,3 +1,5 @@
+cargo-features = ["trim-paths"]
+
 [workspace]
 resolver = "3"
 members = [
@@ -6,8 +8,12 @@ members = [
 
 [profile.release]
 opt-level = "z"
+lto = true
+debug = 1
 codegen-units = 1
 panic = "abort"
+debug-assertions = false
+trim-paths = "object"
 
 [profile.dev]
 opt-level = "z"
@@ -15,6 +21,7 @@ debug = 1
 panic = "abort"
 codegen-units = 1
 debug-assertions = false
+trim-paths = "object"
 
 [patch.crates-io]
 buttplug_core = { path = "../buttplug/embedded/crates/buttplug_core" }
@@ -23,6 +30,6 @@ buttplug_server = { path = "../buttplug/embedded/crates/buttplug_server" }
 buttplug_server_device_config = { path = "../buttplug/embedded/crates/buttplug_server_device_config" }
 buttplug_client_in_process = { path = "../buttplug/embedded/crates/buttplug_client_in_process" }
 buttplug_server_hwmgr_btleplug = { path = "../buttplug/embedded/crates/buttplug_server_hwmgr_btleplug" }
-esp-idf-sys = { git = "https://github.com/esp-rs/esp-idf-sys", rev = "64667a38fb8004e1fc3b032488af6857ca3cd849" }
-esp-idf-hal = { git = "https://github.com/esp-rs/esp-idf-hal", rev = "c42c95968fb0d2d0b3ca5c0e743d22fc87018f1c" }
-esp-idf-svc = { git = "https://github.com/esp-rs/esp-idf-svc", rev = "dee202f146c7681e54eabbf118a216fc0195d203" }
+# esp-idf-sys = { git = "https://github.com/esp-rs/esp-idf-sys", rev = "64667a38fb8004e1fc3b032488af6857ca3cd849" }
+# esp-idf-hal = { git = "https://github.com/esp-rs/esp-idf-hal", rev = "c42c95968fb0d2d0b3ca5c0e743d22fc87018f1c" }
+# esp-idf-svc = { git = "https://github.com/esp-rs/esp-idf-svc", rev = "dee202f146c7681e54eabbf118a216fc0195d203" }

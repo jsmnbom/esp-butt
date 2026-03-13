@@ -4831,8 +4831,8 @@
 				(justify left)
 			)
 		)
-		(property "Value" "JST_XH_B2B"
-			(at 101.6 45.72 0)
+		(property "Value" "JST_PH"
+			(at 104.14 45.72 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -4840,7 +4840,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical"
+		(property "Footprint" "Connector_JST:JST_PH_B2B-PH-K_1x02_P2.00mm_Vertical"
 			(at 109.22 40.64 0)
 			(effects
 				(font

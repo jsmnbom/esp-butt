@@ -2,7 +2,7 @@ use crossterm::event::{Event, EventStream, KeyCode};
 use futures::StreamExt;
 use tokio::sync::broadcast;
 
-use crate::{app::{AppEvent, NavigationEvent}, utils};
+use crate::{app::{AppEvent, NavigationEvent, SliderEvent}, utils};
 
 
 enum State {
@@ -71,7 +71,7 @@ impl Encoder {
                       } else if c == ' ' {
                         if let Ok(value) = slider_value.parse::<u16>() {
                           log::info!("Setting slider {} to value {}", slider, value);
-                          tx.send(AppEvent::SliderChanged(slider as u8, value)).ok();
+                          tx.send(AppEvent::Slider(SliderEvent::Changed(slider as u8, value))).ok();
                         }
                         slider_value.clear();
                         state = State::Idle;
