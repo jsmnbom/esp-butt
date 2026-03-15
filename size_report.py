@@ -20,14 +20,16 @@ Fully vibe-coded, no gaurantees on code quality or stability. Use at your own ri
 """
 
 import argparse
+import csv
 import re
 import shutil
 import subprocess
 import sys
+import dataclasses
 from pathlib import Path
 
 from rich import box
-from rich.console import Console
+from rich.console import Console, RenderableType
 from rich.table import Table
 from rich.text import Text
 
@@ -52,12 +54,20 @@ except ImportError:
 
 DEFAULT_MAP = "target/xtensa-esp32s3-espidf/debug/linker.map"
 
-# Memory type names as used by esp_idf_size -> field name in our entry dict
+# Memory type names as used by esp_idf_size -> SymbolEntry field name
 MEM_TYPE_FIELD: dict[str, str] = {
     "Flash Code": "flash",
     "IRAM": "iram",
     "DIRAM": "diram",
     "Flash Data": "flash_data",
+}
+
+SORT_FIELD = {
+    "total": "total",
+    "flash": "flash",
+    "iram": "iram",
+    "diram": "diram",
+    "data": "flash_data",
 }
 
 
@@ -201,6 +211,90 @@ def fmt_plain(n: int) -> str:
 # ---------------------------------------------------------------------------
 
 
+@dataclasses.dataclass(slots=True)
+class SymbolEntry:
+    raw_sym: str
+    archive: str
+    obj: str
+    address: int = 0
+    total: int = 0
+    flash: int = 0
+    iram: int = 0
+    diram: int = 0
+    flash_data: int = 0
+    file_offset: int = 0
+    name: str = ""
+
+    @classmethod
+    def from_symbol(
+        cls,
+        archive_name: str,
+        obj_file_name: str,
+        sym_name: str,
+        addr_map: dict[tuple[str, str], int],
+        file_offset_segments: list[tuple[int, int, int, int]],
+    ) -> "SymbolEntry":
+        address = addr_map.get((obj_file_name, sym_name), 0)
+        return cls(
+            raw_sym=sym_to_raw(sym_name),
+            archive=Path(archive_name).name,
+            obj=shorten_obj(obj_file_name),
+            address=address,
+            file_offset=vaddr_to_file_offset(address, file_offset_segments),
+        )
+
+    def add_size(self, mem_type_name: str, size: int) -> None:
+        self.total += size
+        field_name = MEM_TYPE_FIELD.get(mem_type_name)
+        if field_name is None:
+            return
+        setattr(self, field_name, getattr(self, field_name) + size)
+
+    def finalize_name(self, demangled_name: str) -> None:
+        self.name = demangled_name.strip() or self.raw_sym
+
+    def sort_metric(self, sort_field: str) -> int:
+        return getattr(self, sort_field)
+
+    def format_address(self, blank: str = "-") -> str:
+        return f"0x{self.address:08x}" if self.address else blank
+
+    def format_file_range(self, blank: str = "-") -> str:
+        if not self.file_offset:
+            return blank
+        file_offset_end = self.file_offset + self.total
+        return f"0x{self.file_offset:07x}-0x{file_offset_end:07x}"
+
+    def table_row(self, index: int) -> list[RenderableType]:
+        return [
+            str(index),
+            self.obj,
+            Text(self.name),
+            fmt_bytes(self.total),
+            fmt_bytes(self.flash),
+            fmt_bytes(self.iram),
+            fmt_bytes(self.diram),
+            fmt_bytes(self.flash_data),
+            self.format_address(),
+            self.format_file_range(),
+        ]
+
+    def csv_row(self, index: int) -> list[str | int]:
+        return [
+            index,
+            self.archive,
+            self.obj,
+            self.name or self.raw_sym,
+            self.total,
+            self.flash,
+            self.iram,
+            self.diram,
+            self.flash_data,
+            self.format_address(blank=""),
+            self.format_file_range(blank=""),
+        ]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -244,6 +338,13 @@ def main() -> None:
         default=None,
         metavar="COLS",
         help="Override terminal width for the table",
+    )
+    parser.add_argument(
+        "--csv",
+        "-c",
+        metavar="FILE",
+        default=None,
+        help="Write all rows to a CSV file (raw byte counts)",
     )
     args = parser.parse_args()
 
@@ -301,7 +402,7 @@ def main() -> None:
     addr_map = build_addr_map(map_file_obj)
 
     # --- walk memory map and collect per-symbol entries ---
-    entries_by_key: dict[str, dict] = {}
+    entries_by_key: dict[str, SymbolEntry] = {}
     for (
         mem_type_name,
         _,
@@ -320,56 +421,38 @@ def main() -> None:
 
         entry_key = f"{archive_name}\x00{obj_file_name}\x00{sym_name}"
         if entry_key not in entries_by_key:
-            # Normalise symbol name for demangling (strip '()' and section prefixes)
-            raw_sym = sym_to_raw(sym_name)
-            entries_by_key[entry_key] = {
-                "raw_sym": raw_sym,
-                "archive": Path(archive_name).name,
-                "obj": shorten_obj(obj_file_name),
-                "total": 0,
-                "flash": 0,
-                "iram": 0,
-                "diram": 0,
-                "flash_data": 0,
-                # Key by (object_file, symbol_name) to avoid collisions across objects
-                "address": addr_map.get((obj_file_name, sym_name), 0),
-            }
-            e = entries_by_key[entry_key]
-            e["file_offset"] = vaddr_to_file_offset(e["address"], file_offset_segments)
+            entries_by_key[entry_key] = SymbolEntry.from_symbol(
+                archive_name,
+                obj_file_name,
+                sym_name,
+                addr_map,
+                file_offset_segments,
+            )
 
         e = entries_by_key[entry_key]
-        e["total"] += size
-        field = MEM_TYPE_FIELD.get(mem_type_name)
-        if field:
-            e[field] += size
+        e.add_size(mem_type_name, size)
 
     entries = list(entries_by_key.values())
     console.print(f"[dim]Loaded {len(entries):,} symbols from {map_path}[/dim]\n")
 
     # --- demangle in one batch ---
     with console.status("[bold cyan]Demangling symbols…[/bold cyan]"):
-        demangled = demangle_batch(rustfilt, [e["raw_sym"] for e in entries])
+        demangled = demangle_batch(rustfilt, [e.raw_sym for e in entries])
 
     for entry, name in zip(entries, demangled):
-        entry["name"] = name.strip() or entry["raw_sym"]
+        entry.finalize_name(name)
 
     # --- filter ---
     filt = args.filter.lower()
     if filt:
-        entries = [e for e in entries if filt in e["name"].lower()]
+        entries = [e for e in entries if filt in e.name.lower()]
         console.print(
             f"[dim]After filter '{args.filter}': {len(entries):,} entries[/dim]\n"
         )
 
     # --- sort ---
-    sort_key = {
-        "total": "total",
-        "flash": "flash",
-        "iram": "iram",
-        "diram": "diram",
-        "data": "flash_data",
-    }[args.sort]
-    entries.sort(key=lambda e: e[sort_key], reverse=True)
+    sort_key = SORT_FIELD[args.sort]
+    entries.sort(key=lambda entry: entry.sort_metric(sort_key), reverse=True)
 
     # --- truncate ---
     top_n = args.top if args.top > 0 else len(entries)
@@ -399,35 +482,45 @@ def main() -> None:
     table.add_column("File Range", style="magenta", justify="left", no_wrap=True)
 
     for i, e in enumerate(visible, 1):
-        addr = e.get("address", 0)
-        addr_str = f"0x{addr:08x}" if addr else "-"
-        foff = e.get("file_offset", 0)
-        if foff:
-            foff_end = foff + e["total"]
-            foff_str = f"0x{foff:07x}-0x{foff_end:07x}"
-        else:
-            foff_str = "-"
         table.add_row(
-            str(i),
-            e["obj"],
-            Text(e["name"]),
-            fmt(e["total"]),
-            fmt(e["flash"]),
-            fmt(e["iram"]),
-            fmt(e["diram"]),
-            fmt(e["flash_data"]),
-            addr_str,
-            foff_str,
+            *e.table_row(i),
         )
 
     console.print(table)
 
+    # --- optional CSV export ---
+    if args.csv:
+        csv_path = Path(args.csv)
+        try:
+            with csv_path.open("w", newline="") as fh:
+                writer = csv.writer(fh)
+                writer.writerow(
+                    [
+                        "#",
+                        "Archive",
+                        "Object",
+                        "Function",
+                        "Total",
+                        "Flash Code",
+                        "IRAM",
+                        "DIRAM",
+                        "Flash Data",
+                        "Address",
+                        "File Range",
+                    ]
+                )
+                for i, e in enumerate(entries, 1):
+                    writer.writerow(e.csv_row(i))
+            console.print(f"[green]Wrote CSV:[/green] {csv_path}")
+        except OSError as exc:
+            console.print(f"[red]Failed to write CSV:[/red] {exc}")
+
     # --- totals footer ---
-    tot_total = sum(e["total"] for e in entries)
-    tot_flash = sum(e["flash"] for e in entries)
-    tot_iram = sum(e["iram"] for e in entries)
-    tot_diram = sum(e["diram"] for e in entries)
-    tot_fdata = sum(e["flash_data"] for e in entries)
+    tot_total = sum(e.total for e in entries)
+    tot_flash = sum(e.flash for e in entries)
+    tot_iram = sum(e.iram for e in entries)
+    tot_diram = sum(e.diram for e in entries)
+    tot_fdata = sum(e.flash_data for e in entries)
 
     console.print(
         f"[bold]Totals (all {len(entries):,} non-zero symbols):[/bold]  "

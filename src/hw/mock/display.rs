@@ -1,12 +1,4 @@
-use std::io::{self, Write};
-
-use crossterm::{
-  cursor::SavePosition,
-  execute,
-  terminal::{WindowSize, window_size},
-};
 use embedded_graphics::{Pixel, pixelcolor::BinaryColor, prelude::*};
-use image::{DynamicImage, GenericImageView};
 
 const WIDTH: u32 = 128;
 const HEIGHT: u32 = 64;
@@ -14,17 +6,20 @@ const BUFFER_SIZE: usize = WIDTH as usize * HEIGHT as usize / 8;
 const OFFSET: u32 = 0;
 
 pub type DisplayCanvas = Canvas<BUFFER_SIZE, WIDTH, HEIGHT, OFFSET>;
+type SubmitFrame = Box<dyn Fn(&[u8]) -> anyhow::Result<()> + Send>;
 
 pub struct Display {
   canvas: DisplayCanvas,
-  img: image::RgbImage,
+  submit_frame: SubmitFrame,
 }
 
 impl Display {
-  pub fn new() -> anyhow::Result<Self> {
+  pub fn new(
+    submit_frame: impl Fn(&[u8]) -> anyhow::Result<()> + Send + 'static,
+  ) -> anyhow::Result<Self> {
     Ok(Self {
       canvas: Canvas::new(),
-      img: image::RgbImage::new(WIDTH, HEIGHT),
+      submit_frame: Box::new(submit_frame),
     })
   }
 
@@ -43,84 +38,8 @@ impl Display {
     self.flush()
   }
 
-  fn max_display_size(&self) -> anyhow::Result<(u16, u16)> {
-    let WindowSize {
-      columns,
-      rows,
-      width,
-      height,
-    } = window_size()?;
-    let cell_size: (u16, u16) = (width / columns, height / rows);
-    return Ok((cell_size.0 * columns, cell_size.1 * 10));
-  }
-
-  fn update_image(&mut self) {
-    self
-      .canvas
-      .get_buffer()
-      .iter()
-      .enumerate()
-      .for_each(|(i, byte)| {
-        let x = (i as u32 % WIDTH) as u32;
-        let y = (i as u32 / WIDTH) * 8;
-        for bit in 0..8 {
-          let pixel_on = (byte >> bit) & 1 == 1;
-          let color = if pixel_on {
-            image::Rgb([255, 255, 255])
-          } else {
-            image::Rgb([0, 0, 0])
-          };
-          if y + bit < HEIGHT {
-            self.img.put_pixel(x, y + bit, color);
-          }
-        }
-      });
-  }
-
   pub fn flush(&mut self) -> anyhow::Result<()> {
-    let mut stdout = io::stdout().lock();
-
-    execute!(stdout, SavePosition, crossterm::cursor::MoveTo(0, 0))?;
-    stdout.flush()?;
-
-    writeln!(
-      stdout,
-      "{}",
-      kitty_image::WrappedCommand::new(kitty_image::Command::new(kitty_image::Action::Delete(
-        kitty_image::ActionDelete {
-          hard: true,
-          target: kitty_image::DeleteTarget::Cursor
-        }
-      )))
-    )?;
-
-    self.update_image();
-    let (max_width, max_height) = self.max_display_size()?;
-    let img = DynamicImage::ImageRgb8(self.img.clone()).resize(
-      max_width as u32,
-      max_height as u32,
-      image::imageops::FilterType::Nearest,
-    );
-    let (width, height) = img.dimensions();
-
-    let action = kitty_image::Action::TransmitAndDisplay(
-      kitty_image::ActionTransmission {
-        width,
-        height,
-        ..Default::default()
-      },
-      kitty_image::ActionPut {
-        ..Default::default()
-      },
-    );
-
-    let command = kitty_image::Command::with_payload_from_image(action, &img);
-    let command = kitty_image::WrappedCommand::new(command);
-
-    writeln!(stdout, "{}", command)?;
-    execute!(stdout, crossterm::cursor::RestorePosition)?;
-
-    Ok(())
+    (self.submit_frame)(self.canvas.get_buffer())
   }
 }
 

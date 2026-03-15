@@ -1,13 +1,13 @@
 [build]
-# target = "xtensa-esp32s3-espidf"
-target = "x86_64-unknown-linux-gnu"
+target = "xtensa-esp32s3-espidf"
+# target = "x86_64-unknown-linux-gnu"
 
 [target.xtensa-esp32s3-espidf]
 linker = "ldproxy"
 runner = "espflash flash --monitor"
 rustflags = [
   "--cfg",
-  "espidf_time64",
+  "espidf_time64"
 ]
 
 [unstable]

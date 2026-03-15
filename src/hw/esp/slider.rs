@@ -22,7 +22,7 @@ use tokio::sync::Notify;
 
 use crate::{app::{AppEvent, SliderEvent}, utils};
 
-pub const MAX_VALUE: u16 = 4095;
+pub const SLIDER_MAX_VALUE: u16 = 4095;
 
 const CHANNELS: usize = 2;
 const SAMPLES_PER_CHANNEL: usize = 256;
@@ -54,7 +54,7 @@ pub struct Sliders {
 }
 
 fn to_range(value: u16, max: u16) -> u16 {
-  (value as u32 * max as u32 / MAX_VALUE as u32) as u16
+  (value as u32 * max as u32 / SLIDER_MAX_VALUE as u32) as u16
 }
 
 impl Sliders {

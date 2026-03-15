@@ -157,6 +157,6 @@ impl App {
 fn scale_slider_to_step(slider_value: u16, step_count: u32, step_min: i32, step_max: i32) -> i32 {
   let step_range = (step_max - step_min) as f64;
   let scaled_value =
-    (slider_value as f64 / hw::slider::MAX_VALUE as f64) * step_range + (step_min as f64);
+    (slider_value as f64 / hw::SLIDER_MAX_VALUE as f64) * step_range + (step_min as f64);
   scaled_value.round() as i32
 }

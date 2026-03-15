@@ -32,7 +32,7 @@ pub fn create_buttplug() -> anyhow::Result<ButtplugInProcessClientConnector> {
     "Loaded {} device definitions",
     dcm.base_device_definitions().len()
   );
-
+  
   log::debug!("Creating device manager...");
   let mut device_manager_builder = ServerDeviceManagerBuilder::new(dcm);
 

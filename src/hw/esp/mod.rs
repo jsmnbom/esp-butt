@@ -1,6 +1,6 @@
 mod display;
 mod encoder;
-pub mod slider;
+mod slider;
 mod ticker;
 
 pub use display::{Display, DisplayCanvas};
@@ -12,7 +12,7 @@ use esp_idf_svc::{
   },
   sys::{self, EspError, esp},
 };
-pub use slider::Sliders;
+pub use slider::{SLIDER_MAX_VALUE, Sliders};
 pub use ticker::Ticker;
 
 pub fn init() -> Result<(), EspError> {

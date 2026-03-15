@@ -1,5 +1,7 @@
+use std::pin::Pin;
+
 use buttplug_client::ButtplugClientEvent;
-use futures::stream::StreamExt;
+use futures::{Stream, stream::StreamExt};
 use futures_concurrency::prelude::*;
 use tokio::sync::broadcast;
 
@@ -23,50 +25,38 @@ pub enum AppState {
   DeviceControl(DeviceControlState),
 }
 
-pub struct AppBuilder {
-  pub sliders: hw::Sliders,
-  pub encoder: hw::Encoder,
-  pub display: hw::Display,
-  pub ticker: hw::Ticker,
-}
-
-impl AppBuilder {
-  pub fn build(self) -> App {
-    let (tx, _) = broadcast::channel(16);
-
-    App {
-      sliders: self.sliders,
-      encoder: self.encoder,
-      display: self.display,
-      ticker: self.ticker,
-
-      tx,
-
-      client: buttplug_client::ButtplugClient::new("esp"),
-
-      scanning: false,
-      devices: Vec::new(),
-      state: Some(AppState::Idle),
-    }
-  }
-}
-
 pub struct App {
-  sliders: hw::Sliders,
-  encoder: hw::Encoder,
   pub(super) display: hw::Display,
-  ticker: hw::Ticker,
-
-  tx: broadcast::Sender<AppEvent>,
-
   pub(super) client: buttplug_client::ButtplugClient,
 
   pub(super) scanning: bool,
   pub(super) devices: Vec<buttplug_client::ButtplugClientDevice>,
   pub(super) state: Option<AppState>,
+
+  tx: broadcast::Sender<AppEvent>,
+  input_event_stream: Option<Pin<Box<dyn Stream<Item = AppEvent> + Send>>>,
 }
 
 impl App {
+  pub fn new(
+    display: hw::Display,
+    input_event_stream: Pin<Box<dyn Stream<Item = AppEvent> + Send>>,
+  ) -> Self {
+    let (tx, _) = broadcast::channel(16);
+
+    App {
+      display,
+      client: buttplug_client::ButtplugClient::new("esp"),
+
+      scanning: false,
+      devices: Vec::new(),
+      state: Some(AppState::Idle),
+      
+      tx,
+      input_event_stream: Some(input_event_stream),
+    }
+  }
+
   pub async fn main(mut self) -> anyhow::Result<()> {
     let connector = buttplug::create_buttplug()?;
 
@@ -81,9 +71,7 @@ impl App {
       (
         client_stream,
         self_stream,
-        self.sliders.stream(),
-        self.encoder.stream(),
-        self.ticker.stream(),
+        self.input_event_stream.take().unwrap(),
       )
         .merge(),
     );
