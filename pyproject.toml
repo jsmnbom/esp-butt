@@ -1,0 +1,16 @@
+[project]
+name = "esp-butt"
+version = "0.1.0"
+description = ""
+readme = "README.md"
+requires-python = "==3.13.*"
+dependencies = ["pip>=26.0.1"]
+
+[tool.ruff]
+line-length = 100
+indent-width = 2
+
+[tool.pyright]
+typeCheckingMode = "off"
+reportWildcardImportFromLibrary = "none"
+

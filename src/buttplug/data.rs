@@ -7,16 +7,15 @@ use buttplug_server_device_config::{
   ServerDeviceDefinition,
 };
 use compact_str::CompactString;
-use serde::{Deserialize, de::DeserializeSeed};
-use serde_describe::{DescribedBy, Schema, SelfDescribed};
+use serde::Deserialize;
+use serde_describe::SelfDescribed;
 
 static BUTTPLUG_DATA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/buttplug/data.bin.gz"));
 
 #[derive(Debug, Deserialize)]
 pub struct ButtplugData {
   base_communication_specifiers: HashMap<CompactString, Vec<ProtocolCommunicationSpecifier>>,
-  server_device_definition_schema: Schema,
-  base_device_definitions: Vec<(Vec<u8>, Vec<BaseDeviceIdentifier>)>,
+  base_device_definitions: SelfDescribed<Vec<(ServerDeviceDefinition, Vec<BaseDeviceIdentifier>)>>,
   base_device_definitions_count: usize,
 }
 
@@ -29,9 +28,7 @@ impl ButtplugData {
 
     let base_communication_specifiers = data.base_communication_specifiers;
     let mut base_device_definitions = HashMap::with_capacity(data.base_device_definitions_count);
-    for (def, ids) in data.base_device_definitions {
-      let DescribedBy(def, _) = data.server_device_definition_schema.describe_type::<ServerDeviceDefinition>().deserialize(&mut postcard::Deserializer::from_bytes(&def))?;
-
+    for (def, ids) in data.base_device_definitions.0 {
       let def = Arc::new(def);
       for id in ids {
         base_device_definitions.insert(id, def.clone());

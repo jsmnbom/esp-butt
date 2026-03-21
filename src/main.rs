@@ -1,5 +1,3 @@
-use futures_concurrency::prelude::*;
-
 mod app;
 mod buttplug;
 mod hw;
@@ -11,6 +9,8 @@ mod ble;
 
 #[cfg(target_os = "espidf")]
 fn main() -> anyhow::Result<()> {
+  use futures_concurrency::prelude::*;
+
   esp_idf_svc::sys::link_patches();
 
   tracing_log::LogTracer::init().unwrap();
@@ -63,27 +63,28 @@ static GLOBAL: tracing_tracy::client::ProfiledAllocator<std::alloc::System> =
 #[cfg(not(target_os = "espidf"))]
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-  let mut mock = hw::HardwareMock::new()?;
-
   use tracing_subscriber::layer::SubscriberExt;
 
-  tracing_log::LogTracer::init().unwrap();
+  tracing_log::LogTracer::init()?;
 
   tracing::subscriber::set_global_default(
     tracing_subscriber::fmt()
-      .with_ansi(false)
       .without_time()
-      .with_writer(move || hw::LogWriter::new(mock.log_sender().clone()))
+      .with_writer(move || hw::LogWriter::new())
       .finish()
       .with(tracing_tracy::TracyLayer::default()),
-  )
-  .unwrap();
+  )?;
 
   buttplug::init();
 
   log::info!("Hello, world!");
 
-  let app = app::App::new(mock.take_display(), mock.input_event_stream());
+  let hw::HardwareMock {
+    display,
+    input_stream,
+  } = hw::HardwareMock::new()?;
+
+  let app = app::App::new(display, input_stream);
 
   app.main().await
 }

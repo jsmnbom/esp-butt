@@ -15,9 +15,6 @@ fn main() {
     out.ancestors().nth(3).unwrap().display()
   );
 
-  // Parallel symbol resolution in GNU ld
-  // println!("cargo:rustc-link-arg=-Wl,--threads");
-
   if let Err(e) = img_data::generate(PathBuf::from("./img"), out.join("img")) {
     panic!("Failed to generate image data: {e}");
   }
@@ -95,15 +92,15 @@ mod buttplug_data {
   };
   use compact_str::CompactString;
   use serde::Serialize;
-  use serde_describe::{Schema, SchemaBuilder};
+  use serde_describe::SelfDescribed;
 
   #[derive(Serialize)]
   pub struct ButtplugData {
     // We hope none of ProtocolCommunicationSpecifier needs SelfDescribed :P
     base_communication_specifiers: HashMap<CompactString, Vec<ProtocolCommunicationSpecifier>>,
     // Reverse map of ServerDeviceDefinition to its identifiers
-    server_device_definition_schema: Schema,
-    base_device_definitions: Vec<(Vec<u8>, Vec<BaseDeviceIdentifier>)>,
+    base_device_definitions:
+      SelfDescribed<Vec<(ServerDeviceDefinition, Vec<BaseDeviceIdentifier>)>>,
     // Length of base_device_definitions when unpacked - aka total count of identifiers - used to preallocate the HashMap when loading
     base_device_definitions_count: usize,
   }
@@ -125,31 +122,14 @@ mod buttplug_data {
           .push(identifier.clone());
       }
 
-      let mut schema_builder = SchemaBuilder::new();
-      let base_device_definitions_traces = base_device_definitions_groups
+      let base_device_definitions = base_device_definitions_groups
         .into_values()
-        .map(|(definition, identifiers)| -> anyhow::Result<_> {
-          let trace = schema_builder.trace(&definition)?;
-          Ok((trace, identifiers))
-        })
-        .collect::<anyhow::Result<Vec<_>>>()?;
-
-      let server_device_definition_schema = schema_builder.build()?;
-
-      let base_device_definitions = base_device_definitions_traces
-        .into_iter()
-        .map(|(definition, identifiers)| -> anyhow::Result<_> {
-          Ok((
-            postcard::to_allocvec(&server_device_definition_schema.describe_trace(definition))?,
-            identifiers,
-          ))
-        })
-        .collect::<anyhow::Result<Vec<_>>>()?;
+        .map(|(def, ids)| (def, ids))
+        .collect::<Vec<_>>();
 
       let data = Self {
         base_communication_specifiers: dcm.base_communication_specifiers().clone(),
-        server_device_definition_schema,
-        base_device_definitions,
+        base_device_definitions: SelfDescribed(base_device_definitions),
         base_device_definitions_count: dcm.base_device_definitions().len(),
       };
 

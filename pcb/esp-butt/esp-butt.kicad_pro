@@ -504,12 +504,12 @@
   },
   "pcbnew": {
     "last_paths": {
-      "gencad": "",
-      "idf": "",
+      "gencad": "esp-butt.cad",
+      "idf": "esp-butt.emn",
       "netlist": "",
       "plot": "out/",
       "pos_files": "esp-butt/",
-      "specctra_dsn": "",
+      "specctra_dsn": "esp-butt.dsn",
       "step": "../esp-butt.step",
       "svg": "",
       "vrml": ""

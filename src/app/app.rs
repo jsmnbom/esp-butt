@@ -81,6 +81,7 @@ impl App {
     self.queue_draw();
 
     while let Some(event) = event_stream.next().await {
+      log::info!(target: "app_events", "{event:?}");
       match event {
         AppEvent::ButtplugEvent(ref event) => self.on_buttplug_event(event).await,
         AppEvent::Navigation(ref nav_event) => self.on_navigation(nav_event).await,
