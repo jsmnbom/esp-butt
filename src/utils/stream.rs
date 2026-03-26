@@ -1,6 +1,6 @@
 use async_stream::stream;
 use futures::Stream;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 
 pub fn convert_broadcast_receiver_to_stream<T>(
   mut receiver: broadcast::Receiver<T>,
@@ -17,6 +17,25 @@ where
           continue;
         }
         Err(broadcast::error::RecvError::Closed) => {
+          // If the channel is closed, we can end the stream
+          break;
+        }
+      }
+    }
+  }
+}
+
+pub fn convert_mpsc_receiver_to_stream<T>(
+  mut receiver: mpsc::Receiver<T>,
+) -> impl Stream<Item = T>
+where
+  T: Unpin + Clone,
+{
+  stream! {
+    loop {
+      match receiver.recv().await {
+        Some(val) => yield val,
+        None => {
           // If the channel is closed, we can end the stream
           break;
         }

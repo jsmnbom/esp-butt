@@ -1,5 +1,6 @@
-use std::pin::Pin;
+use std::{pin::Pin, sync::Arc};
 
+use buttplug_client::ButtplugClientDevice;
 use buttplug_client::ButtplugClientEvent;
 use futures::{Stream, stream::StreamExt};
 use futures_concurrency::prelude::*;
@@ -13,7 +14,7 @@ use crate::{
     device_control::DeviceControlState,
     device_list::DeviceListState,
   },
-  buttplug,
+  buttplug::{self, deferred::DiscoveredDevice},
   hw,
   utils,
 };
@@ -27,11 +28,20 @@ pub enum AppState {
 
 pub struct App {
   pub(super) display: hw::Display,
+  pub(super) server: Option<Arc<buttplug_server::ButtplugServer>>,
   pub(super) client: buttplug_client::ButtplugClient,
 
   pub(super) scanning: bool,
-  pub(super) devices: Vec<buttplug_client::ButtplugClientDevice>,
   pub(super) state: Option<AppState>,
+
+  /// Protocol-matched devices discovered during scanning, shown in the device list.
+  pub(super) devices: Vec<DiscoveredDevice>,
+  /// Name of the device with an in-flight connection attempt.
+  pub(super) pending_connect: Option<String>,
+  /// Full list of devices that Buttplug has reported as connected.
+  pub(super) connected_devices: Vec<ButtplugClientDevice>,
+  /// Index into `connected_devices` for the device currently being controlled.
+  pub(super) current_device_index: Option<usize>,
 
   tx: broadcast::Sender<AppEvent>,
   input_event_stream: Option<Pin<Box<dyn Stream<Item = AppEvent> + Send>>>,
@@ -46,25 +56,32 @@ impl App {
 
     App {
       display,
+      server: None,
       client: buttplug_client::ButtplugClient::new("esp"),
 
       scanning: false,
-      devices: Vec::new(),
       state: Some(AppState::Idle),
-      
+
+      devices: Vec::new(),
+      pending_connect: None,
+      connected_devices: Vec::new(),
+      current_device_index: None,
+
       tx,
       input_event_stream: Some(input_event_stream),
     }
   }
 
   pub async fn main(mut self) -> anyhow::Result<()> {
-    let connector = buttplug::create_buttplug()?;
+    let (server, connector, discovery_stream) = buttplug::create_buttplug()?;
+    self.server = Some(server.clone());
 
     let client_stream = self
       .client
       .event_stream()
       .map(|event| AppEvent::ButtplugEvent(event));
 
+    let discovery_stream = discovery_stream.map(|device| AppEvent::DeviceDiscovered(device));
     let self_stream = utils::stream::convert_broadcast_receiver_to_stream(self.tx.subscribe());
 
     let mut event_stream = Box::pin(
@@ -72,6 +89,7 @@ impl App {
         client_stream,
         self_stream,
         self.input_event_stream.take().unwrap(),
+        discovery_stream,
       )
         .merge(),
     );
@@ -92,6 +110,7 @@ impl App {
           log::info!("Quit event received, exiting");
           return Ok(());
         }
+        AppEvent::DeviceDiscovered(device) => self.on_device_approval_requested(device),
       }
     }
 
@@ -112,11 +131,17 @@ impl App {
     self.set_state(AppState::DeviceList(DeviceListState { cursor: 0 }));
   }
 
-  pub(super) fn goto_device_control(&mut self, device_index: usize) {
-    match self.create_device_control(device_index) {
+  pub(super) fn goto_device_control(&mut self) {
+    match self.create_device_control() {
       Ok(state) => self.set_state(AppState::DeviceControl(state)),
       Err(e) => log::error!("Error creating device control state: {:?}", e),
     }
+  }
+
+  pub(super) fn current_device(&self) -> Option<&ButtplugClientDevice> {
+    self
+      .current_device_index
+      .and_then(|index| self.connected_devices.get(index))
   }
 
   fn set_state(&mut self, new_state: AppState) {
@@ -124,22 +149,60 @@ impl App {
     self.queue_draw();
   }
 
+  fn on_device_approval_requested(&mut self, device: DiscoveredDevice) {
+    // Replace existing entry with same name (e.g. re-discovered after re-scan) or append.
+    if let Some(existing) = self.devices.iter_mut().find(|d| d.name == device.name) {
+      *existing = device;
+    } else {
+      self.devices.push(device);
+    }
+    self.queue_draw();
+  }
+
   async fn on_buttplug_event(&mut self, event: &ButtplugClientEvent) {
     match event {
       ButtplugClientEvent::DeviceAdded(device) => {
         log::info!("Device added: {}", device.name());
-        self.devices.push(device.clone());
-        self.queue_draw();
+        let device = device.clone();
+        let connected_index = if let Some(index) = self
+          .connected_devices
+          .iter()
+          .position(|connected| connected.index() == device.index())
+        {
+          self.connected_devices[index] = device;
+          index
+        } else {
+          self.connected_devices.push(device);
+          self.connected_devices.len() - 1
+        };
+
+        if self.pending_connect.take().is_some() {
+          self.current_device_index = Some(connected_index);
+          self.goto_device_control();
+        }
       }
       ButtplugClientEvent::DeviceRemoved(device) => {
         log::info!("Device removed: {}", device.name());
-        self.devices.retain(|d| d.index() != device.index());
-        self.queue_draw();
+        if let Some(removed_index) = self
+          .connected_devices
+          .iter()
+          .position(|connected| connected.index() == device.index())
+        {
+          self.connected_devices.remove(removed_index);
 
-        if let Some(AppState::DeviceControl(ref state)) = self.state {
-          if device.index() as usize == state.device_index {
-            log::info!("Current device removed, returning to device list");
-            self.goto_device_list();
+          match self.current_device_index {
+            Some(current_index) if current_index == removed_index => {
+              self.current_device_index = None;
+
+              if let Some(AppState::DeviceControl(_)) = self.state {
+                log::info!("Current device removed, returning to device list");
+                self.goto_device_list();
+              }
+            }
+            Some(current_index) if current_index > removed_index => {
+              self.current_device_index = Some(current_index - 1);
+            }
+            _ => {}
           }
         }
       }

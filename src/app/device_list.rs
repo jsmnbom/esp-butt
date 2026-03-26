@@ -55,8 +55,40 @@ impl App {
             }
           }
         } else if (state.cursor as usize) <= self.devices.len() {
-          // Go to device control screen
-          self.goto_device_control((state.cursor - 1) as usize);
+          let device_index = (state.cursor - 1) as usize;
+          let device_name = self.devices[device_index].name.clone();
+          // If buttplug already has this device connected (e.g. user navigated
+          // back without disconnecting), jump straight to device control.
+          if let Some(connected_index) = self
+            .connected_devices
+            .iter()
+            .position(|d| d.name().as_str() == device_name.as_str())
+          {
+            self.current_device_index = Some(connected_index);
+            self.goto_device_control();
+          } else {
+            if self.scanning {
+              log::info!("Stopping scan before connecting to device");
+              match self.client.stop_scanning().await {
+                Ok(_) => {
+                  self.scanning = false;
+                }
+                Err(e) => {
+                  log::error!("Error stopping scan before connect: {:?}", e);
+                  return;
+                }
+              }
+            }
+
+            let device = self.devices.remove(device_index);
+            self.pending_connect = Some(device_name);
+            device.approve();
+
+            if state.cursor > self.devices.len() as u16 {
+              state.cursor = self.devices.len() as u16;
+            }
+            self.queue_draw();
+          }
         }
       }
     }
@@ -102,11 +134,12 @@ impl App {
 
     for (index, item) in self.devices.iter().enumerate() {
       let y = 3 + (index as i32 + 1) * item_height;
-      let name: &str = item.name().as_str();
-      utils::draw::draw_text(screen, &MAIN_FONT, name, Point::new(16, y))?;
-
-      let display_name: &str = item.display_name().as_deref().unwrap_or("");
-      utils::draw::draw_text(screen, &SMALL_FONT, display_name, Point::new(16, y + 9))?;
+      let label = if self.pending_connect.as_deref() == Some(item.name.as_str()) {
+        format!("{} ...", item.name)
+      } else {
+        item.name.clone()
+      };
+      utils::draw::draw_text(screen, &MAIN_FONT, &label, Point::new(16, y))?;
     }
 
     // Draw cursor

@@ -1,13 +1,14 @@
-use buttplug_client_in_process::{
-  ButtplugInProcessClientConnector,
-  ButtplugInProcessClientConnectorBuilder,
-};
-use buttplug_server::{ButtplugServerBuilder, device::ServerDeviceManagerBuilder};
+use std::sync::Arc;
 
-use crate::buttplug::async_manager::EspAsyncManager;
+use buttplug_server::{ButtplugServer, ButtplugServerBuilder, device::ServerDeviceManagerBuilder};
+use futures::Stream;
+
+use crate::buttplug::{async_manager::EspAsyncManager, connector::SimpleInProcessClientConnector};
 
 pub mod async_manager;
+pub mod connector;
 pub mod data;
+pub mod deferred;
 
 #[cfg(target_os = "espidf")]
 mod hwmgr;
@@ -19,7 +20,16 @@ pub fn init() {
   );
 }
 
-pub fn create_buttplug() -> anyhow::Result<ButtplugInProcessClientConnector> {
+#[cfg(target_os = "espidf")]
+type CommunicationManager = hwmgr::BleCommunicationManagerBuilder;
+#[cfg(not(target_os = "espidf"))]
+type CommunicationManager = buttplug_server_hwmgr_btleplug::BtlePlugCommunicationManagerBuilder;
+
+pub fn create_buttplug() -> anyhow::Result<(
+  Arc<ButtplugServer>,
+  SimpleInProcessClientConnector,
+  impl Stream<Item = deferred::DiscoveredDevice>,
+)> {
   log::debug!("Loading Buttplug data...");
 
   let dcm = data::ButtplugData::load()?.finish()?;
@@ -32,27 +42,19 @@ pub fn create_buttplug() -> anyhow::Result<ButtplugInProcessClientConnector> {
     "Loaded {} device definitions",
     dcm.base_device_definitions().len()
   );
-  
+
   log::debug!("Creating device manager...");
   let mut device_manager_builder = ServerDeviceManagerBuilder::new(dcm);
-
-  #[cfg(target_os = "espidf")]
-  device_manager_builder
-    .comm_manager(hwmgr::BleCommunicationManagerBuilder::default());
-
-  #[cfg(not(target_os = "espidf"))]
-  device_manager_builder
-    .comm_manager(buttplug_server_hwmgr_btleplug::BtlePlugCommunicationManagerBuilder::default());
-
+  let (deferred_builder, discovery_stream) =
+    deferred::DeferredCommunicationManagerBuilder::new(CommunicationManager::default());
+  device_manager_builder.comm_manager(deferred_builder);
   let device_manager = device_manager_builder.finish()?;
 
   log::debug!("Creating server...");
-  let server = ButtplugServerBuilder::new(device_manager).finish()?;
+  let server = Arc::new(ButtplugServerBuilder::new(device_manager).finish()?);
 
   log::debug!("Creating connector...");
-  let mut connector_builder = ButtplugInProcessClientConnectorBuilder::default();
-  connector_builder.server(server);
-  let connector = connector_builder.finish();
+  let connector = SimpleInProcessClientConnector::new(server.clone());
 
-  Ok(connector)
+  Ok((server, connector, discovery_stream))
 }

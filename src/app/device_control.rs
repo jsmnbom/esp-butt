@@ -31,8 +31,6 @@ pub struct DeviceControlOutput {
 
 #[derive(Debug)]
 pub struct DeviceControlState {
-  /// Index into App.devices of the currently controlled device
-  pub device_index: usize,
   // /// Cached battery level (0–100), refreshed on each Tick
   // pub battery: Option<u32>,
   // /// Cached RSSI value, refreshed on each Tick
@@ -44,13 +42,12 @@ pub struct DeviceControlState {
 impl App {
   pub fn create_device_control(
     &mut self,
-    device_index: usize,
   ) -> anyhow::Result<DeviceControlState> {
-    let device = match self.devices.get(device_index) {
+    let device = match self.current_device() {
       Some(d) => d,
       None => {
-        log::warn!("goto_device_control: invalid device index {}", device_index);
-        return Err(anyhow::anyhow!("Invalid device index"));
+        log::warn!("goto_device_control: no current device");
+        return Err(anyhow::anyhow!("No current device"));
       }
     };
 
@@ -77,7 +74,6 @@ impl App {
     }
 
     Ok(DeviceControlState {
-      device_index,
       // battery: None,
       // rssi: None,
       outputs,
@@ -92,6 +88,25 @@ impl App {
     match nav_event {
       NavigationEvent::Up | NavigationEvent::Down => {}
       NavigationEvent::Select => {
+        // Stop current output and ask the server device manager to disconnect the device.
+        if let Some(device) = self.current_device().cloned() {
+          if let Some(current_index) = self.current_device_index.take() {
+            self.connected_devices.remove(current_index);
+          }
+
+          if let Err(e) = device.stop().await {
+            log::warn!("Error stopping device on back-navigate: {:?}", e);
+          }
+
+          match self.server.as_ref() {
+            Some(server) => {
+              if let Err(e) = server.device_manager().disconnect_device(device.index()).await {
+                log::warn!("Error disconnecting device on back-navigate: {:?}", e);
+              }
+            }
+            None => log::warn!("No Buttplug server available to disconnect current device"),
+          }
+        }
         self.goto_device_list();
       }
     }
@@ -104,8 +119,6 @@ impl App {
     state: &mut DeviceControlState,
     slider_event: &SliderEvent,
   ) {
-    let device = self.devices.get(state.device_index).unwrap();
-
     match slider_event {
       SliderEvent::Changed(slider_index, slider_value) => {
         if let Some(output) = state.outputs.get_mut(slider_index) {
@@ -144,7 +157,7 @@ impl App {
   // ── Drawing ──────────────────────────────────────────────────────────────
 
   pub fn draw_device_control(&mut self, state: &DeviceControlState) -> anyhow::Result<()> {
-    let Some(device) = self.devices.get(state.device_index) else {
+    let Some(device) = self.current_device() else {
       return Ok(());
     };
 

@@ -1,5 +1,7 @@
 use buttplug_client::ButtplugClientEvent;
 
+use crate::buttplug::deferred::DiscoveredDevice;
+
 #[derive(Debug, Clone, Copy)]
 pub enum NavigationEvent {
   /// Encoder turned one "click" in the counter-clockwise direction
@@ -29,4 +31,7 @@ pub enum AppEvent {
   /// Periodic tick for polling device state (battery, RSSI)
   Tick,
   Quit,
+  /// A device has been matched to a known protocol and is ready to connect;
+  /// the app must call `device.approve.notify_one()` to allow the BLE connection.
+  DeviceDiscovered(DiscoveredDevice),
 }

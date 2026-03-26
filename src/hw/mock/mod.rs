@@ -22,13 +22,11 @@ use ratatui::{
     },
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
   },
-  layout::{Constraint, Direction, Layout, Position, Rect, Size},
-  widgets::{Block, Borders, Paragraph, StatefulWidget, Widget, Wrap},
+  layout::{Constraint, Direction, Layout, Rect},
+  widgets::{Block, Borders, StatefulWidget, Widget},
 };
-use tui_scrollview::{ScrollView, ScrollViewState};
 use ratatui_image::{Resize, StatefulImage, picker::Picker, protocol::StatefulProtocol};
 use tokio::sync::{broadcast, watch};
-use ansi_to_tui::IntoText as _;
 
 use crate::{
   app::{AppEvent, NavigationEvent, SliderEvent},
@@ -40,53 +38,6 @@ pub const SLIDER_MAX_VALUE: u16 = 4095;
 const WIDTH: u32 = 128;
 const HEIGHT: u32 = 64;
 const BUFFER_SIZE: usize = (WIDTH * HEIGHT / 8) as usize;
-
-const MAX_LOG_LINES: usize = 1000;
-
-static LOG_BUFFER: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
-
-pub struct LogWriter {
-  buf: Vec<u8>,
-}
-
-impl LogWriter {
-  pub fn new() -> Self {
-    Self { buf: Vec::new() }
-  }
-
-  pub fn logs() -> Vec<String> {
-    LOG_BUFFER.lock().unwrap_or_else(|e| e.into_inner()).clone()
-  }
-}
-
-impl io::Write for LogWriter {
-  fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-    self.buf.extend_from_slice(buf);
-    Ok(buf.len())
-  }
-
-  fn flush(&mut self) -> io::Result<()> {
-    Ok(())
-  }
-}
-
-impl Drop for LogWriter {
-  fn drop(&mut self) {
-    if self.buf.is_empty() {
-      return;
-    }
-    let text = String::from_utf8_lossy(&self.buf);
-    let line = text.trim_end_matches('\n').to_string();
-    if !line.is_empty() {
-      let mut guard = LOG_BUFFER.lock().unwrap_or_else(|e| e.into_inner());
-      guard.push(line);
-      let len = guard.len();
-      if len > MAX_LOG_LINES {
-        guard.drain(0..len - MAX_LOG_LINES);
-      }
-    }
-  }
-}
 
 pub struct HardwareMock {
   pub display: Display,
@@ -164,8 +115,8 @@ fn run_ui(
 
   // Compute the cell dimensions for the 128×64 display image.
   let (font_w, font_h) = picker.font_size();
-  let display_cols = (WIDTH as u16).div_ceil(font_w.max(1));
-  let display_rows = (HEIGHT as u16).div_ceil(font_h.max(1));
+  let display_cols = (WIDTH as u16).div_ceil(font_w.max(1)) * 2;
+  let display_rows = (HEIGHT as u16).div_ceil(font_h.max(1)) * 2;
 
   let mut state = UiState {
     image: picker.new_resize_protocol(frame_to_image(&initial_frame)),
@@ -175,9 +126,6 @@ fn run_ui(
     slider_hitboxes: [Rect::ZERO, Rect::ZERO],
     display_cols,
     display_rows,
-    log_scroll: ScrollViewState::default(),
-    log_auto_scroll: true,
-    log_area: Rect::ZERO,
   };
 
   let result = ui_loop(&mut terminal, &input_tx, &mut frame_rx, &mut state);
@@ -203,11 +151,6 @@ struct UiState {
   display_cols: u16,
   /// Height of the display image in terminal cells.
   display_rows: u16,
-  log_scroll: ScrollViewState,
-  /// When true the log view follows the newest messages.
-  log_auto_scroll: bool,
-  /// Bounding rect of the log content area (updated each frame).
-  log_area: Rect,
 }
 
 fn ui_loop(
@@ -236,22 +179,13 @@ fn ui_loop(
 }
 
 fn draw_ui(frame: &mut ratatui::Frame<'_>, state: &mut UiState) {
-  // Left column is exactly as wide as the display image + 2 border chars.
   let left_col_width = state.display_cols + 2;
-
-  let columns = Layout::default()
-    .direction(Direction::Horizontal)
-    .constraints([Constraint::Length(left_col_width), Constraint::Min(30)])
-    .split(frame.area());
-
-  // ── Left column ──────────────────────────────────────────────────────────
-  // Display on top, sliders below.
-  let display_block_height = state.display_rows + 2; // +2 for block borders
+  let display_block_height = state.display_rows + 2;
 
   let left = Layout::default()
     .direction(Direction::Vertical)
     .constraints([Constraint::Length(display_block_height), Constraint::Min(6)])
-    .split(columns[0]);
+    .split(Rect::new(0, 0, left_col_width, frame.area().height));
 
   // Display
   let display_block = Block::default().title("Display").borders(Borders::ALL);
@@ -261,7 +195,7 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, state: &mut UiState) {
   let image = StatefulImage::default().resize(Resize::Scale(None));
   frame.render_stateful_widget(image, display_area, &mut state.image);
 
-  // Sliders — side by side, pixel-accurate fill heights.
+  // Sliders — side by side.
   let slider_area = left[1];
   let slider_cols = Layout::default()
     .direction(Direction::Horizontal)
@@ -282,33 +216,6 @@ fn draw_ui(frame: &mut ratatui::Frame<'_>, state: &mut UiState) {
     state.slider_values[1],
     state.display_rows,
   );
-
-  // ── Right column ─────────────────────────────────────────────────────────
-  // let right = Layout::default()
-  //   .direction(Direction::Vertical)
-  //   .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
-  //   .split(columns[1]);
-
-  let log_block = Block::default().title("Logs (PgUp/PgDn, End to follow)").borders(Borders::ALL);
-  state.log_area = log_block.inner(columns[1]);
-  let log_area = state.log_area;
-  log_block.render(columns[1], frame.buffer_mut());
-
-  let logs = LogWriter::logs();
-  let content_height = logs.len() as u16;
-  let content_width = log_area.width.saturating_sub(1); // -1 for scrollbar
-
-  if state.log_auto_scroll {
-    state.log_scroll.scroll_to_bottom();
-  }
-
-  let mut scroll_view = ScrollView::new(Size::new(content_width, content_height));
-  for (i, line) in logs.iter().enumerate() {
-    let line_area = Rect::new(0, i as u16, content_width, 1);
-    let text = line.clone().into_text().unwrap_or_default();
-    scroll_view.render_widget(Paragraph::new(text), line_area);
-  }
-  scroll_view.render(log_area, frame.buffer_mut(), &mut state.log_scroll);
 }
 
 fn draw_slider(
@@ -385,20 +292,6 @@ fn handle_event(event: Event, state: &mut UiState, input_tx: &broadcast::Sender<
         send_slider(state, input_tx, 0, state.slider_values[0]);
         false
       }
-      KeyCode::PageUp => {
-        state.log_auto_scroll = false;
-        state.log_scroll.scroll_page_up();
-        false
-      }
-      KeyCode::PageDown => {
-        state.log_scroll.scroll_page_down();
-        false
-      }
-      KeyCode::End => {
-        state.log_auto_scroll = true;
-        state.log_scroll.scroll_to_bottom();
-        false
-      }
       _ => false,
     },
     Event::Mouse(mouse) => {
@@ -406,21 +299,6 @@ fn handle_event(event: Event, state: &mut UiState, input_tx: &broadcast::Sender<
         MouseEventKind::Down(MouseButton::Left) | MouseEventKind::Drag(MouseButton::Left) => {
           update_slider_from_mouse(state, input_tx, mouse.column, mouse.row, 0);
           update_slider_from_mouse(state, input_tx, mouse.column, mouse.row, 1);
-        }
-        MouseEventKind::ScrollUp
-          if state
-            .log_area
-            .contains(Position::new(mouse.column, mouse.row)) =>
-        {
-          state.log_auto_scroll = false;
-          state.log_scroll.scroll_up();
-        }
-        MouseEventKind::ScrollDown
-          if state
-            .log_area
-            .contains(Position::new(mouse.column, mouse.row)) =>
-        {
-          state.log_scroll.scroll_down();
         }
         _ => {}
       }

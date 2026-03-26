@@ -69,8 +69,9 @@ async fn main() -> anyhow::Result<()> {
 
   tracing::subscriber::set_global_default(
     tracing_subscriber::fmt()
+      .with_max_level(tracing::Level::DEBUG)
       .without_time()
-      .with_writer(move || hw::LogWriter::new())
+      .with_writer(std::io::stderr)
       .finish()
       .with(tracing_tracy::TracyLayer::default()),
   )?;
