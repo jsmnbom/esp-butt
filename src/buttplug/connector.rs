@@ -5,7 +5,7 @@ use std::sync::{
 
 use buttplug_core::{
   connector::{ButtplugConnector, ButtplugConnectorError, ButtplugConnectorResultFuture},
-  message::{ButtplugClientMessageV4, ButtplugServerMessageV4},
+  message::{ButtplugClientMessageV4, ButtplugServerMessageV4}, util::async_manager,
 };
 use buttplug_server::{ButtplugServer, message::ButtplugServerMessageVariant};
 use futures::{
@@ -13,8 +13,7 @@ use futures::{
 };
 use log::info;
 use tokio::sync::mpsc;
-
-use crate::utils::task::{Core, spawn};
+use tracing::info_span;
 
 pub struct SimpleInProcessClientConnector {
   server: Arc<ButtplugServer>,
@@ -45,7 +44,7 @@ impl ButtplugConnector<ButtplugClientMessageV4, ButtplugServerMessageV4>
       self.server_outbound_sender = Some(message_sender);
       let mut server_recv = Box::pin(self.server.server_version_event_stream());
       async move {
-        spawn(
+        async_manager::spawn(
           async move {
             info!("Starting In Process Client Connector Event Sender Loop");
             while let Some(event) = server_recv.next().await {
@@ -55,10 +54,7 @@ impl ButtplugConnector<ButtplugClientMessageV4, ButtplugServerMessageV4>
             }
             info!("Stopping In Process Client Connector Event Sender Loop, due to channel receiver being dropped.");
           },
-          c"InProcessClientConnectorEventSenderLoop",
-          8192,
-          Core::App,
-          5
+          info_span!("InProcessClientConnectorEventSenderLoop"),
         );
         connected.store(true, Ordering::Relaxed);
         Ok(())

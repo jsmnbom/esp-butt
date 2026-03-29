@@ -15,8 +15,9 @@ impl AsyncManager for EspAsyncManager {
   fn spawn(&self, future: FutureObj<'static, ()>, span: Span) {
     let span_name: Option<&str> = span.metadata().and_then(|metadata| Some(metadata.name()));
     let mut name: &'static CStr = c"unnamed";
-    let mut core = utils::task::Core::App;
+    let core = utils::task::Core::App;
     let mut stack_size = 12 * 1024;
+    let priority = 5;
 
     log::info!(
       "Spawning task in async manager with span name: {:?}",
@@ -32,13 +33,12 @@ impl AsyncManager for EspAsyncManager {
         name = c"connector";
         stack_size = 8 * 1024;
       }
-      Some("Client Loop Span") => {
+      Some("ClientLoop") => {
         name = c"clientloop";
       }
-      Some("DeviceCommunicationTask") => {
+      Some("DeviceTask") => {
         name = c"devicecomm";
         stack_size = 8 * 1024;
-        core = utils::task::Core::Pro;
       }
       Some("DeviceEventForwardingTask") => {
         name = c"deviceforward";
@@ -47,12 +47,23 @@ impl AsyncManager for EspAsyncManager {
       Some("device creation") => {
         name = c"devicecreation";
         stack_size = 16 * 1024;
-        core = utils::task::Core::Pro;
-      }
+      },
+      Some("deferred-comm") => {
+        name = c"deferredcomm";
+        stack_size = 8 * 1024;
+      },
+      Some("ble-hardware") => {
+        name = c"blehw";
+        stack_size = 8 * 1024;
+      },
+      Some("BtlePlugCommunicationManager::adapter_task") => {
+        name = c"btleadapter";
+        stack_size = 16 * 1024;
+      },
       _ => {}
     }
 
-    utils::task::spawn(future, name, stack_size, core, 5);
+    utils::task::spawn(future, name, stack_size, core, priority);
   }
 
   async fn sleep(&self, duration: core::time::Duration) {

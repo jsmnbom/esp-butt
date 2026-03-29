@@ -14,6 +14,6 @@ pub use task_mock::{sleep, sleep_timer_async, spawn};
 
 #[derive(Debug, Clone, Copy)]
 pub enum Core {
-  App,
   Pro,
+  App,
 }

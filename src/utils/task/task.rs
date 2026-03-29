@@ -11,8 +11,8 @@ use super::Core;
 impl From<Core> for esp_idf_svc::hal::cpu::Core {
   fn from(core: Core) -> Self {
     match core {
-      Core::App => Self::Core0,
-      Core::Pro => Self::Core1,
+      Core::Pro => Self::Core0,
+      Core::App => Self::Core1,
     }
   }
 }

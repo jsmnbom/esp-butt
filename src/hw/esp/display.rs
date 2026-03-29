@@ -27,7 +27,7 @@ impl Display {
     let mut display = Box::new(Sh1106::new(i2c_interface));
 
     display.init()?;
-    display.set_rotation(DisplayRotation::Rotate0).unwrap();
+    display.set_rotation(DisplayRotation::Rotate180).unwrap();
     display.flush()?;
 
     Ok(Display(display))

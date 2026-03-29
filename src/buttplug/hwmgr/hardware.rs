@@ -256,7 +256,8 @@ impl BleHardware {
 
 impl HardwareInternal for BleHardware {
   fn disconnect(&self) -> BoxFuture<'static, Result<(), ButtplugDeviceError>> {
-    unimplemented!()
+    let result = self.device.disconnect().map_err(to_hardware_err);
+    async move { result }.boxed()
   }
   fn event_stream(&self) -> broadcast::Receiver<HardwareEvent> {
     self.event_stream.subscribe()

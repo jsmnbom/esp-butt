@@ -2,21 +2,18 @@ use crate::utils::{self, heap, task};
 
 #[allow(dead_code)]
 pub fn start_reporting(interval: core::time::Duration) {
-  log_heap();
-  log_task_list();
-
   task::spawn(
     async move {
       loop {
+        utils::task::sleep_timer_async(interval).await;
         log_heap();
         log_task_list();
-        utils::task::sleep_timer_async(interval).await;
       }
     },
     c"report",
     6 * 1024,
     task::Core::App,
-    6,
+    1,
   );
 }
 

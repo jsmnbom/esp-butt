@@ -21,18 +21,20 @@ use crate::utils;
 #[derive(Debug, Clone)]
 pub struct DiscoveredDevice {
   pub name: String,
+  pub address: Option<String>,
   approve: Arc<Notify>,
 }
 
 impl DiscoveredDevice {
-  pub fn approve(&self) {
-    self.approve.notify_one();
+  pub fn approval(&self) -> Arc<Notify> {
+    self.approve.clone()
   }
 }
 
 struct DeferredHardwareConnector {
   inner: Box<dyn HardwareConnector + Send>,
   name: String,
+  address: String,
   discovered_tx: mpsc::Sender<DiscoveredDevice>,
 }
 
@@ -40,6 +42,7 @@ impl std::fmt::Debug for DeferredHardwareConnector {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("DeferredHardwareConnector")
       .field("name", &self.name)
+      .field("address", &self.address)
       .finish()
   }
 }
@@ -54,6 +57,7 @@ impl HardwareConnector for DeferredHardwareConnector {
     let approve = Arc::new(Notify::new());
     let discovered = DiscoveredDevice {
       name: self.name.clone(),
+      address: Some(self.address.clone()),
       approve: approve.clone(),
     };
 
@@ -106,10 +110,11 @@ impl<I: HardwareCommunicationManagerBuilder> HardwareCommunicationManagerBuilder
               // Wrap the creator in a DeferredHardwareConnector
               HardwareCommunicationManagerEvent::DeviceFound {
                 name: name.clone(),
-                address,
+                address: address.clone(),
                 creator: Box::new(DeferredHardwareConnector {
                   inner: creator,
                   name,
+                  address,
                   discovered_tx: discovered_tx.clone(),
                 }),
               }

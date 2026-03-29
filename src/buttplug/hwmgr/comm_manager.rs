@@ -74,7 +74,7 @@ impl BleCommunicationManager {
       return;
     }
     let name = properties.name.to_string();
-    let address = format!("{:?}", properties.address);
+    let address = format!("{}", properties.address);
 
     let creator = Box::new(BleHardwareConnector::new(properties));
     if sender

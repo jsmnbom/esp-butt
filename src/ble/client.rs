@@ -1,6 +1,6 @@
 use std::{
   ffi::c_void,
-  sync::atomic::{AtomicU16, Ordering},
+  sync::atomic::{AtomicBool, AtomicU16, Ordering},
 };
 
 use esp_idf_svc::sys::{self, esp, esp_nofail};
@@ -134,6 +134,7 @@ impl ClientConnector {
     let (tx, mut rx) = broadcast::channel(16);
 
     let state = Box::new(ClientState {
+      connected: AtomicBool::new(false),
       conn_handle: AtomicU16::new(0),
       tx,
     });
@@ -176,6 +177,7 @@ impl ClientConnector {
 
 #[derive(Debug)]
 pub struct ClientState {
+  connected: AtomicBool,
   conn_handle: AtomicU16,
   tx: broadcast::Sender<Result<ClientEvent, BleError>>,
 }
@@ -205,6 +207,26 @@ impl Client {
   pub fn get_service(&self, uuid: Uuid) -> Option<&Service> {
     self.services.iter().find(|s| s.uuid == uuid)
   }
+
+  pub fn disconnect(&self) -> Result<(), BleError> {
+    if !self.state.connected.load(Ordering::SeqCst) {
+      return Ok(());
+    }
+
+    let conn_handle = self.state.conn_handle.load(Ordering::SeqCst);
+    let rc = unsafe {
+      sys::ble_gap_terminate(
+        conn_handle,
+        sys::ble_error_codes_BLE_ERR_REM_USER_CONN_TERM as u8,
+      )
+    };
+
+    if rc != 0 && rc != sys::BLE_HS_ENOTCONN as i32 {
+      return Err(BleError::NimbleError(rc as u16));
+    }
+
+    Ok(())
+  }
 }
 
 extern "C" fn on_gap_event(event: *mut sys::ble_gap_event, arg: *mut c_void) -> i32 {
@@ -226,6 +248,7 @@ extern "C" fn on_gap_event(event: *mut sys::ble_gap_event, arg: *mut c_void) -> 
     } => {
       if status == 0 {
         log::info!("Connected with handle {}", conn_handle);
+        state.connected.store(true, Ordering::SeqCst);
         state.conn_handle.store(conn_handle, Ordering::SeqCst);
         log::info!("Exchanging MTU");
         unsafe {
@@ -251,6 +274,7 @@ extern "C" fn on_gap_event(event: *mut sys::ble_gap_event, arg: *mut c_void) -> 
       reason,
       conn_handle,
     } => {
+      state.connected.store(false, Ordering::SeqCst);
       log::info!(
         "Disconnected from handle {}: reason {}",
         conn_handle,

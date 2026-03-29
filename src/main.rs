@@ -21,7 +21,6 @@ fn main() -> anyhow::Result<()> {
     .install();
 
   hw::init()?;
-  buttplug::init();
 
   utils::report::start_reporting(core::time::Duration::from_secs(5));
 
@@ -61,7 +60,7 @@ static GLOBAL: tracing_tracy::client::ProfiledAllocator<std::alloc::System> =
   tracing_tracy::client::ProfiledAllocator::new(std::alloc::System, 100);
 
 #[cfg(not(target_os = "espidf"))]
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
   use tracing_subscriber::layer::SubscriberExt;
 
@@ -75,8 +74,6 @@ async fn main() -> anyhow::Result<()> {
       .finish()
       .with(tracing_tracy::TracyLayer::default()),
   )?;
-
-  buttplug::init();
 
   log::info!("Hello, world!");
 

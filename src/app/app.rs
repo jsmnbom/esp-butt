@@ -8,6 +8,7 @@ use tokio::sync::broadcast;
 
 use crate::{
   app::{
+    AppDevice,
     AppEvent,
     NavigationEvent,
     SliderEvent,
@@ -30,17 +31,16 @@ pub struct App {
   pub(super) display: hw::Display,
   pub(super) server: Option<Arc<buttplug_server::ButtplugServer>>,
   pub(super) client: buttplug_client::ButtplugClient,
+  pub(super) boot_loading: bool,
 
   pub(super) scanning: bool,
   pub(super) state: Option<AppState>,
 
-  /// Protocol-matched devices discovered during scanning, shown in the device list.
-  pub(super) devices: Vec<DiscoveredDevice>,
-  /// Name of the device with an in-flight connection attempt.
-  pub(super) pending_connect: Option<String>,
-  /// Full list of devices that Buttplug has reported as connected.
-  pub(super) connected_devices: Vec<ButtplugClientDevice>,
-  /// Index into `connected_devices` for the device currently being controlled.
+  /// Unified app devices that can be discovered and/or connected.
+  pub(super) devices: Vec<AppDevice>,
+  /// Index of the device with an in-flight connection attempt.
+  pub(super) pending_connect: Option<usize>,
+  /// Index into `devices` for the device currently being controlled.
   pub(super) current_device_index: Option<usize>,
 
   tx: broadcast::Sender<AppEvent>,
@@ -58,13 +58,13 @@ impl App {
       display,
       server: None,
       client: buttplug_client::ButtplugClient::new("esp"),
+      boot_loading: true,
 
       scanning: false,
       state: Some(AppState::Idle),
 
       devices: Vec::new(),
       pending_connect: None,
-      connected_devices: Vec::new(),
       current_device_index: None,
 
       tx,
@@ -73,6 +73,12 @@ impl App {
   }
 
   pub async fn main(mut self) -> anyhow::Result<()> {
+    // Draw immediately so stale pixels from previous runs are cleared while
+    // buttplug initialization and data loading are still in flight.
+    self.draw().await?;
+
+    buttplug::init();
+
     let (server, connector, discovery_stream) = buttplug::create_buttplug()?;
     self.server = Some(server.clone());
 
@@ -95,6 +101,7 @@ impl App {
     );
 
     self.client.connect(connector).await?;
+    self.boot_loading = false;
 
     self.queue_draw();
 
@@ -110,7 +117,7 @@ impl App {
           log::info!("Quit event received, exiting");
           return Ok(());
         }
-        AppEvent::DeviceDiscovered(device) => self.on_device_approval_requested(device),
+        AppEvent::DeviceDiscovered(device) => self.on_device_discovered(device),
       }
     }
 
@@ -128,7 +135,24 @@ impl App {
   }
 
   pub(super) fn goto_device_list(&mut self) {
-    self.set_state(AppState::DeviceList(DeviceListState { cursor: 0 }));
+    self.set_state(AppState::DeviceList(DeviceListState {
+      cursor: 0,
+      last_activity: std::time::Instant::now(),
+    }));
+  }
+
+  pub(super) async fn ensure_device_list_scanning(&mut self) {
+    if !matches!(self.state, Some(AppState::DeviceList(_))) || self.scanning {
+      return;
+    }
+
+    match self.client.start_scanning().await {
+      Ok(_) => {
+        self.scanning = true;
+        self.queue_draw();
+      }
+      Err(e) => log::error!("Error ensuring scan is active on device list: {:?}", e),
+    }
   }
 
   pub(super) fn goto_device_control(&mut self) {
@@ -141,7 +165,8 @@ impl App {
   pub(super) fn current_device(&self) -> Option<&ButtplugClientDevice> {
     self
       .current_device_index
-      .and_then(|index| self.connected_devices.get(index))
+      .and_then(|index| self.devices.get(index))
+      .and_then(|device| device.client_device())
   }
 
   fn set_state(&mut self, new_state: AppState) {
@@ -149,12 +174,32 @@ impl App {
     self.queue_draw();
   }
 
-  fn on_device_approval_requested(&mut self, device: DiscoveredDevice) {
-    // Replace existing entry with same name (e.g. re-discovered after re-scan) or append.
-    if let Some(existing) = self.devices.iter_mut().find(|d| d.name == device.name) {
-      *existing = device;
+  fn on_device_discovered(&mut self, device: DiscoveredDevice) {
+    let Some(server) = self.server.as_ref() else {
+      log::warn!("Received discovered device before server was initialized");
+      return;
+    };
+
+    let app_device = AppDevice::from_discovered(device, server);
+    // Replace existing entry if address matches first; otherwise fall back to name.
+    if let Some(existing) =
+      self
+        .devices
+        .iter_mut()
+        .find(|d| match (d.address(), app_device.address()) {
+          (Some(existing), Some(new)) => existing == new,
+          _ => false,
+        })
+    {
+      *existing = app_device;
+    } else if let Some(existing) = self
+      .devices
+      .iter_mut()
+      .find(|d| d.name() == app_device.name())
+    {
+      *existing = app_device;
     } else {
-      self.devices.push(device);
+      self.devices.push(app_device);
     }
     self.queue_draw();
   }
@@ -164,19 +209,24 @@ impl App {
       ButtplugClientEvent::DeviceAdded(device) => {
         log::info!("Device added: {}", device.name());
         let device = device.clone();
+        let device_index = device.index();
         let connected_index = if let Some(index) = self
-          .connected_devices
+          .devices
           .iter()
-          .position(|connected| connected.index() == device.index())
+          .position(|d| d.buttplug_index() == Some(device_index))
         {
-          self.connected_devices[index] = device;
+          self.devices[index].set_connected_device(device);
+          index
+        } else if let Some(index) = self.pending_connect {
+          self.devices[index].set_connected_device(device);
           index
         } else {
-          self.connected_devices.push(device);
-          self.connected_devices.len() - 1
+          log::error!("Received DeviceAdded for unknown device index {}, and no pending connect", device_index);
+          return;
         };
 
-        if self.pending_connect.take().is_some() {
+        if self.pending_connect.is_some() {
+          self.pending_connect = None;
           self.current_device_index = Some(connected_index);
           self.goto_device_control();
         }
@@ -184,11 +234,11 @@ impl App {
       ButtplugClientEvent::DeviceRemoved(device) => {
         log::info!("Device removed: {}", device.name());
         if let Some(removed_index) = self
-          .connected_devices
+          .devices
           .iter()
-          .position(|connected| connected.index() == device.index())
+          .position(|d| d.buttplug_index() == Some(device.index()))
         {
-          self.connected_devices.remove(removed_index);
+          self.devices[removed_index].clear_connected_device();
 
           match self.current_device_index {
             Some(current_index) if current_index == removed_index => {
@@ -198,9 +248,6 @@ impl App {
                 log::info!("Current device removed, returning to device list");
                 self.goto_device_list();
               }
-            }
-            Some(current_index) if current_index > removed_index => {
-              self.current_device_index = Some(current_index - 1);
             }
             _ => {}
           }
@@ -213,6 +260,7 @@ impl App {
       ButtplugClientEvent::ScanningFinished => {
         log::info!("Buttplug scanning finished");
         self.scanning = false;
+        self.ensure_device_list_scanning().await;
         self.queue_draw();
       }
       _ => {}
@@ -225,6 +273,7 @@ impl App {
       Some(AppState::Idle) => {
         self.state = Some(AppState::Idle);
         self.on_idle_navigation(nav_event);
+        self.ensure_device_list_scanning().await;
       }
       Some(AppState::DeviceList(mut state)) => {
         self.on_device_list_navigation(&mut state, nav_event).await;
@@ -260,6 +309,15 @@ impl App {
 
   async fn on_tick(&mut self) {
     match self.state.take() {
+      Some(AppState::DeviceList(state)) => {
+        if state.last_activity.elapsed() >= std::time::Duration::from_secs(60) {
+          log::info!("Device list idle timeout, returning to idle");
+          self.goto_idle();
+        } else {
+          self.state = Some(AppState::DeviceList(state));
+          self.ensure_device_list_scanning().await;
+        }
+      }
       Some(AppState::DeviceControl(mut state)) => {
         self.on_device_control_tick(&mut state).await;
         if self.state.is_none() {
@@ -276,7 +334,6 @@ impl App {
   }
 
   async fn on_draw(&mut self) {
-    //log::info!("Drawing screen with state: {:?}", self.state);
     if let Err(e) = self.draw().await {
       log::error!("Error drawing: {:?}", e);
     }
@@ -305,7 +362,7 @@ impl App {
       }
     }
 
-    self.display.flush_all()?;
+    self.display.flush()?;
 
     Ok(())
   }

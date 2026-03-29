@@ -111,9 +111,9 @@ impl Encoder {
         }
       },
       c"encoder",
-      2 * 1024,
+      4 * 1024,
       Core::App,
-      5,
+      8,
     );
   }
 

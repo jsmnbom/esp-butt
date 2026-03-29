@@ -100,7 +100,7 @@ mod buttplug_data {
     base_communication_specifiers: HashMap<CompactString, Vec<ProtocolCommunicationSpecifier>>,
     // Reverse map of ServerDeviceDefinition to its identifiers
     base_device_definitions:
-      SelfDescribed<Vec<(ServerDeviceDefinition, Vec<BaseDeviceIdentifier>)>>,
+      Vec<(Vec<BaseDeviceIdentifier>, Vec<u8>)>, // We store the raw postcard data here and only deserialize on demand to save memory and startup time>,
     // Length of base_device_definitions when unpacked - aka total count of identifiers - used to preallocate the HashMap when loading
     base_device_definitions_count: usize,
   }
@@ -109,12 +109,24 @@ mod buttplug_data {
     pub fn build() -> anyhow::Result<Vec<u8>> {
       let dcm = load_protocol_configs(&None, &None, false)?.finish()?;
 
+      let base_communication_specifiers = dcm.base_communication_specifiers().iter().filter_map(|(k, v)| {
+        if v.iter().any(|specifier| matches!(specifier, ProtocolCommunicationSpecifier::BluetoothLE(..))) {
+          Some((k.clone(), v.clone()))
+        } else {
+          None
+        }
+      }).collect::<HashMap<_, _>>();
+
       let mut base_device_definitions_groups: HashMap<
         *const ServerDeviceDefinition,
         (ServerDeviceDefinition, Vec<BaseDeviceIdentifier>),
       > = HashMap::new();
 
       for (identifier, definition) in dcm.base_device_definitions() {
+        if !base_communication_specifiers.contains_key(identifier.protocol().as_str()) {
+          continue;
+        }
+
         base_device_definitions_groups
           .entry(Arc::as_ptr(definition))
           .or_insert_with(|| (definition.deref().clone(), Vec::new()))
@@ -124,12 +136,12 @@ mod buttplug_data {
 
       let base_device_definitions = base_device_definitions_groups
         .into_values()
-        .map(|(def, ids)| (def, ids))
+        .map(|(def, ids)| (ids, postcard::to_allocvec(&SelfDescribed(def)).unwrap()))
         .collect::<Vec<_>>();
 
       let data = Self {
-        base_communication_specifiers: dcm.base_communication_specifiers().clone(),
-        base_device_definitions: SelfDescribed(base_device_definitions),
+        base_communication_specifiers: base_communication_specifiers,
+        base_device_definitions: base_device_definitions,
         base_device_definitions_count: dcm.base_device_definitions().len(),
       };
 

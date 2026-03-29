@@ -32,6 +32,6 @@ pub enum AppEvent {
   Tick,
   Quit,
   /// A device has been matched to a known protocol and is ready to connect;
-  /// the app must call `device.approve.notify_one()` to allow the BLE connection.
+  /// the app stores its approval handle and notifies it when the user initiates connect.
   DeviceDiscovered(DiscoveredDevice),
 }

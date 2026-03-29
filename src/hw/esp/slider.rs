@@ -20,7 +20,10 @@ use esp_idf_svc::{
 use futures::Stream;
 use tokio::sync::Notify;
 
-use crate::{app::{AppEvent, SliderEvent}, utils};
+use crate::{
+  app::{AppEvent, SliderEvent},
+  utils,
+};
 
 pub const SLIDER_MAX_VALUE: u16 = 4095;
 
@@ -94,7 +97,7 @@ impl Sliders {
         notifier.notified().await;
 
         for i in 0..CHANNELS {
-          let value = values[i].load(std::sync::atomic::Ordering::Relaxed);
+          let value = values[i].load(std::sync::atomic::Ordering::Acquire);
 
           if value != last_values_sent[i] {
             log::info!("Slider {} changed to {:<4} -> {:<4} | 0-5: {:<2} | 0-10: {:<2} | 0-20: {:<2}", i, last_values_sent[i], value, to_range(value, 5), to_range(value, 10), to_range(value, 20));
@@ -142,19 +145,19 @@ impl Sliders {
               let deviation = (channel_average[i] as i32 - last_channel_output[i] as i32).abs();
 
               if deviation > HYSTERESIS_THRESHOLD as i32 {
-                values[i].store(channel_average[i], std::sync::atomic::Ordering::Relaxed);
-                notifier.notify_waiters();
+                values[i].store(channel_average[i], std::sync::atomic::Ordering::Release);
+                notifier.notify_one();
                 last_channel_output[i] = channel_average[i];
               }
             }
           }
-          utils::task::sleep(core::time::Duration::from_millis(20)).await;
+          utils::task::sleep(core::time::Duration::from_millis(25)).await;
         }
       },
       c"slider",
       4 * 1024,
       utils::task::Core::App,
-      1,
+      8,
     );
   }
 }

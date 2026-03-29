@@ -4,14 +4,10 @@ use buttplug_client::device::{
   ClientDeviceOutputCommand,
 };
 use buttplug_core::{
-  message::{DeviceFeatureOutput, InputType, OutputType},
+  message::OutputType,
   util::range::RangeInclusive,
 };
-use embedded_graphics::{
-  pixelcolor::BinaryColor,
-  prelude::*,
-  primitives::{Line, PrimitiveStyle, Rectangle},
-};
+use embedded_graphics::prelude::Point;
 use litemap::LiteMap;
 
 use crate::{
@@ -89,25 +85,16 @@ impl App {
       NavigationEvent::Up | NavigationEvent::Down => {}
       NavigationEvent::Select => {
         // Stop current output and ask the server device manager to disconnect the device.
-        if let Some(device) = self.current_device().cloned() {
-          if let Some(current_index) = self.current_device_index.take() {
-            self.connected_devices.remove(current_index);
-          }
-
-          if let Err(e) = device.stop().await {
-            log::warn!("Error stopping device on back-navigate: {:?}", e);
-          }
-
-          match self.server.as_ref() {
-            Some(server) => {
-              if let Err(e) = server.device_manager().disconnect_device(device.index()).await {
-                log::warn!("Error disconnecting device on back-navigate: {:?}", e);
-              }
+        if let Some(current_index) = self.current_device_index {
+          if let Some(device) = self.devices.get_mut(current_index) {
+            if let Err(e) = device.disconnect().await {
+              log::warn!("Error disconnecting device on back-navigate: {:?}", e);
             }
-            None => log::warn!("No Buttplug server available to disconnect current device"),
           }
         }
+        self.current_device_index = None;
         self.goto_device_list();
+        self.ensure_device_list_scanning().await;
       }
     }
   }
@@ -144,30 +131,72 @@ impl App {
             Ok(_) => log::info!("Sent command for slider {}", slider_index),
             Err(e) => log::error!("Error sending command for slider {}: {:?}", slider_index, e),
           }
+          self.queue_draw();
         }
       }
     }
   }
 
   /// Periodic tick: poll battery and RSSI from the current device.
-  pub async fn on_device_control_tick(&mut self, state: &mut DeviceControlState) {
+  pub async fn on_device_control_tick(&mut self, _state: &mut DeviceControlState) {
     // TODO
   }
 
   // ── Drawing ──────────────────────────────────────────────────────────────
 
   pub fn draw_device_control(&mut self, state: &DeviceControlState) -> anyhow::Result<()> {
-    let Some(device) = self.current_device() else {
+    let Some(current_index) = self.current_device_index else {
       return Ok(());
     };
 
-    let name = device.name().clone();
+    let Some(app_device) = self.devices.get(current_index) else {
+      return Ok(());
+    };
+
+    let screen = self.display.get_mut_canvas();
+
+    utils::draw::draw_text(
+      screen,
+      &MAIN_FONT,
+      &format!("Name: {}", app_device.name()),
+      Point::new(0, 0),
+    )?;
+
+    let address = app_device.address().unwrap_or("-");
+    utils::draw::draw_text(
+      screen,
+      &SMALL_FONT,
+      &format!("Addr: {}", address),
+      Point::new(0, 12),
+    )?;
+
+    let pretty_name = app_device.pretty_name().unwrap_or("-");
+    utils::draw::draw_text(
+      screen,
+      &SMALL_FONT,
+      &format!("Pretty: {}", pretty_name),
+      Point::new(0, 20),
+    )?;
+
+    for (line, (_, output)) in state.outputs.iter().take(2).enumerate() {
+      utils::draw::draw_text(
+        screen,
+        &SMALL_FONT,
+        &format!("S{}: {} ({})", line + 1, output.value, output.step),
+        Point::new(0, 32 + (line as i32 * 8)),
+      )?;
+    }
 
     Ok(())
   }
 }
 
-fn scale_slider_to_step(slider_value: u16, step_count: u32, step_min: i32, step_max: i32) -> i32 {
+fn scale_slider_to_step(
+  slider_value: u16,
+  _step_count: u32,
+  step_min: i32,
+  step_max: i32,
+) -> i32 {
   let step_range = (step_max - step_min) as f64;
   let scaled_value =
     (slider_value as f64 / hw::SLIDER_MAX_VALUE as f64) * step_range + (step_min as f64);
