@@ -13,6 +13,7 @@ pub struct AppDevice {
   pretty_name: Option<String>,
   approval: Option<Arc<Notify>>,
   connected_device: Option<ButtplugClientDevice>,
+  is_connecting: bool,
   server: Weak<buttplug_server::ButtplugServer>,
 }
 
@@ -27,20 +28,7 @@ impl AppDevice {
       pretty_name: None,
       approval: Some(discovered.approval()),
       connected_device: None,
-      server: Arc::downgrade(server),
-    }
-  }
-
-  pub fn from_connected(
-    device: ButtplugClientDevice,
-    server: &Arc<buttplug_server::ButtplugServer>,
-  ) -> Self {
-    Self {
-      name: device.name().clone(),
-      address: None,
-      pretty_name: Some(device.name().clone()),
-      approval: None,
-      connected_device: Some(device),
+      is_connecting: false,
       server: Arc::downgrade(server),
     }
   }
@@ -69,13 +57,19 @@ impl AppDevice {
     self.connected_device.is_some()
   }
 
+  pub fn is_connecting(&self) -> bool {
+    self.is_connecting
+  }
+
   pub fn set_connected_device(&mut self, device: ButtplugClientDevice) {
     self.pretty_name = Some(device.name().clone());
     self.connected_device = Some(device);
+    self.is_connecting = false;
   }
 
   pub fn clear_connected_device(&mut self) {
     self.connected_device = None;
+    self.is_connecting = false;
   }
 
   pub async fn connect(&mut self) -> anyhow::Result<()> {
@@ -88,6 +82,8 @@ impl AppDevice {
       .take()
       .ok_or_else(|| anyhow!("Device '{}' is not available to connect", self.name))?;
 
+    self.is_connecting = true;
+
     approval.notify_one();
     Ok(())
   }
@@ -98,7 +94,11 @@ impl AppDevice {
     };
 
     if let Err(e) = device.stop().await {
-      log::warn!("Error stopping device '{}' before disconnect: {:?}", self.name, e);
+      log::warn!(
+        "Error stopping device '{}' before disconnect: {:?}",
+        self.name,
+        e
+      );
     }
 
     let Some(server) = self.server.upgrade() else {
@@ -114,7 +114,6 @@ impl AppDevice {
       .await
       .map_err(|e| anyhow!("Error disconnecting '{}': {:?}", self.name, e))?;
 
-    self.clear_connected_device();
     Ok(())
   }
 }

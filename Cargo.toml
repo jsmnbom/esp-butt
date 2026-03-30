@@ -13,7 +13,7 @@ harness = false # do not use the built-in cargo test harness -> resolve rust-ana
 
 [profile.release]
 opt-level = "z"
-lto = true
+lto = false
 debug = 1
 codegen-units = 1
 panic = "abort"
@@ -21,14 +21,6 @@ debug-assertions = false
 trim-paths = "object"
 
 [profile.dev]
-opt-level = "z"
-debug = 1
-panic = "abort"
-codegen-units = 16
-debug-assertions = false
-
-[profile.dev2]
-inherits = "dev"
 opt-level = "s"
 debug = 1
 panic = "abort"

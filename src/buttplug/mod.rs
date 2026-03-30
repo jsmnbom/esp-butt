@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use buttplug_server::{ButtplugServer, ButtplugServerBuilder, device::ServerDeviceManagerBuilder};
-use buttplug_server_device_config::DeviceConfigurationManager;
 use futures::Stream;
 use tracing::instrument;
 

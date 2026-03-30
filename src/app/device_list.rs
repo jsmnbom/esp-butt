@@ -52,31 +52,26 @@ impl App {
       }
       NavigationEvent::Select => {
         let device_index = state.cursor as usize;
-        // If buttplug already has this device connected (e.g. user navigated
-        // back without disconnecting), jump straight to device control.
-        if self.devices[device_index].client_device().is_some() {
-          self.current_device_index = Some(device_index);
-          self.goto_device_control();
-        } else {
-          if self.scanning {
-            log::info!("Stopping scan before connecting to device");
-            match self.client.stop_scanning().await {
-              Ok(_) => {
-                self.scanning = false;
-              }
-              Err(e) => {
-                log::error!("Error stopping scan before connect: {:?}", e);
-                return;
-              }
+
+        if self.scanning {
+          log::info!("Stopping scan before connecting to device");
+          match self.client.stop_scanning().await {
+            Ok(_) => {
+              self.scanning = false;
+            }
+            Err(e) => {
+              log::error!("Error stopping scan before connect: {:?}", e);
+              return;
             }
           }
+        }
 
-          self.pending_connect = Some(device_index);
-          if let Err(e) = self.devices[device_index].connect().await {
-            log::warn!("Error connecting selected device: {:?}", e);
-            self.pending_connect = None;
-          }
+        if let Err(e) = self.devices[device_index].connect().await {
+          log::warn!("Error connecting selected device: {:?}", e);
           self.queue_draw();
+        } else {
+          self.current_device_index = Some(device_index);
+          self.goto_connecting();
         }
       }
     }
@@ -108,15 +103,11 @@ impl App {
 
     for (index, item) in self.devices.iter().enumerate() {
       let y = 3 + index as i32 * item_height;
-      let label = if self.pending_connect == Some(index) {
-        format!("{} ...", item.name())
-      } else {
-        item.name().to_string()
-      };
+      let label = item.name();
       utils::draw::draw_text(screen, &MAIN_FONT, &label, Point::new(16, y))?;
 
       if let Some(address) = item.address() {
-        utils::draw::draw_text(screen, &SMALL_FONT, address, Point::new(16, y + 11))?;
+        utils::draw::draw_text(screen, &SMALL_FONT, address, Point::new(16, y + 10))?;
       }
     }
 
@@ -139,6 +130,17 @@ impl App {
       }
     }
 
+    Ok(())
+  }
+
+  pub fn draw_connecting(&mut self) -> anyhow::Result<()> {
+    let name = self
+      .current_device()
+      .map(|d| d.name().to_string())
+      .unwrap_or_else(|| "?".to_string());
+    let screen = self.display.get_mut_canvas();
+    utils::draw::draw_text(screen, &MAIN_FONT, &name, Point::new(0, 20))?;
+    utils::draw::draw_text(screen, &SMALL_FONT, "Connecting...", Point::new(0, 36))?;
     Ok(())
   }
 }

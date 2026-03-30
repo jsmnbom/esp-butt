@@ -23,6 +23,8 @@ use crate::{
 #[derive(Debug)]
 pub enum AppState {
   Idle,
+  Connecting,
+  Disconnecting,
   DeviceList(DeviceListState),
   DeviceControl(DeviceControlState),
 }
@@ -38,8 +40,6 @@ pub struct App {
 
   /// Unified app devices that can be discovered and/or connected.
   pub(super) devices: Vec<AppDevice>,
-  /// Index of the device with an in-flight connection attempt.
-  pub(super) pending_connect: Option<usize>,
   /// Index into `devices` for the device currently being controlled.
   pub(super) current_device_index: Option<usize>,
 
@@ -64,7 +64,6 @@ impl App {
       state: Some(AppState::Idle),
 
       devices: Vec::new(),
-      pending_connect: None,
       current_device_index: None,
 
       tx,
@@ -162,14 +161,22 @@ impl App {
     }
   }
 
-  pub(super) fn current_device(&self) -> Option<&ButtplugClientDevice> {
+  pub(super) fn goto_disconnecting(&mut self) {
+    self.set_state(AppState::Disconnecting);
+  }
+
+  pub(super) fn goto_connecting(&mut self) {
+    self.set_state(AppState::Connecting);
+  }
+
+  pub(super) fn current_device(&self) -> Option<&AppDevice> {
     self
       .current_device_index
       .and_then(|index| self.devices.get(index))
-      .and_then(|device| device.client_device())
   }
 
   fn set_state(&mut self, new_state: AppState) {
+    log::debug!("Transitioning to state: {:?}", new_state);
     self.state = Some(new_state);
     self.queue_draw();
   }
@@ -210,25 +217,22 @@ impl App {
         log::info!("Device added: {}", device.name());
         let device = device.clone();
         let device_index = device.index();
-        let connected_index = if let Some(index) = self
-          .devices
-          .iter()
-          .position(|d| d.buttplug_index() == Some(device_index))
-        {
-          self.devices[index].set_connected_device(device);
-          index
-        } else if let Some(index) = self.pending_connect {
-          self.devices[index].set_connected_device(device);
-          index
+        if let Some(index) = self.current_device_index {
+          if self.devices[index].is_connecting() {
+            self.devices[index].set_connected_device(device);
+            self.goto_device_control();
+          } else {
+            log::error!(
+              "Received DeviceAdded (index {}) but current device '{}' is not connecting",
+              device_index,
+              self.devices[index].name()
+            );
+          }
         } else {
-          log::error!("Received DeviceAdded for unknown device index {}, and no pending connect", device_index);
-          return;
-        };
-
-        if self.pending_connect.is_some() {
-          self.pending_connect = None;
-          self.current_device_index = Some(connected_index);
-          self.goto_device_control();
+          log::error!(
+            "Received DeviceAdded (index {}) but no current device is set",
+            device_index
+          );
         }
       }
       ButtplugClientEvent::DeviceRemoved(device) => {
@@ -244,9 +248,13 @@ impl App {
             Some(current_index) if current_index == removed_index => {
               self.current_device_index = None;
 
-              if let Some(AppState::DeviceControl(_)) = self.state {
+              if matches!(
+                self.state,
+                Some(AppState::DeviceControl(_)) | Some(AppState::Disconnecting { .. })
+              ) {
                 log::info!("Current device removed, returning to device list");
                 self.goto_device_list();
+                self.ensure_device_list_scanning().await;
               }
             }
             _ => {}
@@ -288,6 +296,9 @@ impl App {
         if self.state.is_none() {
           self.state = Some(AppState::DeviceControl(state));
         }
+      }
+      Some(state @ AppState::Connecting { .. }) | Some(state @ AppState::Disconnecting { .. }) => {
+        self.state = Some(state);
       }
     }
   }
@@ -343,7 +354,7 @@ impl App {
     self.display.get_mut_canvas().get_mut_buffer().fill(0);
 
     match self.state.take() {
-      None => unreachable!("state is None during on_navigation"),
+      None => unreachable!("state is None during draw"),
       Some(AppState::Idle) => {
         self.state = Some(AppState::Idle);
         self.draw_idle()?;
@@ -360,9 +371,17 @@ impl App {
           self.state = Some(AppState::DeviceControl(state));
         }
       }
+      Some(AppState::Connecting) => {
+        self.state = Some(AppState::Connecting);
+        self.draw_connecting()?;
+      }
+      Some(AppState::Disconnecting) => {
+        self.state = Some(AppState::Disconnecting);
+        self.draw_disconnecting()?;
+      }
     }
 
-    self.display.flush()?;
+    self.display.flush_all()?;
 
     Ok(())
   }

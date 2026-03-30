@@ -11,7 +11,7 @@ use embedded_graphics::prelude::Point;
 use litemap::LiteMap;
 
 use crate::{
-  app::{App, MAIN_FONT, NavigationEvent, SMALL_FONT, SliderEvent},
+  app::{App, AppState, MAIN_FONT, NavigationEvent, SMALL_FONT, SliderEvent},
   hw,
   utils,
 };
@@ -39,7 +39,7 @@ impl App {
   pub fn create_device_control(
     &mut self,
   ) -> anyhow::Result<DeviceControlState> {
-    let device = match self.current_device() {
+    let device = match self.current_device().and_then(|d| d.client_device()) {
       Some(d) => d,
       None => {
         log::warn!("goto_device_control: no current device");
@@ -84,17 +84,21 @@ impl App {
     match nav_event {
       NavigationEvent::Up | NavigationEvent::Down => {}
       NavigationEvent::Select => {
-        // Stop current output and ask the server device manager to disconnect the device.
         if let Some(current_index) = self.current_device_index {
+          self.goto_disconnecting();
           if let Some(device) = self.devices.get_mut(current_index) {
             if let Err(e) = device.disconnect().await {
-              log::warn!("Error disconnecting device on back-navigate: {:?}", e);
+              log::warn!("Error disconnecting device: {:?}", e);
+              self.current_device_index = None;
+              self.goto_device_list();
+              self.ensure_device_list_scanning().await;
             }
+            // On success, DeviceRemoved event will transition to device list
           }
+        } else {
+          self.goto_device_list();
+          self.ensure_device_list_scanning().await;
         }
-        self.current_device_index = None;
-        self.goto_device_list();
-        self.ensure_device_list_scanning().await;
       }
     }
   }
@@ -187,6 +191,14 @@ impl App {
       )?;
     }
 
+    Ok(())
+  }
+
+  pub fn draw_disconnecting(&mut self) -> anyhow::Result<()> {
+    let name = self.current_device().map(|d| d.name().to_string()).unwrap_or_else(|| "?".to_string());
+    let screen = self.display.get_mut_canvas();
+    utils::draw::draw_text(screen, &MAIN_FONT, &name, Point::new(0, 20))?;
+    utils::draw::draw_text(screen, &SMALL_FONT, "Disconnecting...", Point::new(0, 36))?;
     Ok(())
   }
 }

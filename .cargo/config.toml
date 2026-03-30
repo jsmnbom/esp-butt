@@ -10,6 +10,9 @@ rustflags = [
   "espidf_time64"
 ]
 
+[target.x86_64-unknown-linux-gnu]
+runner = "./run_kitty.sh"
+
 [unstable]
 build-std = ["std", "panic_abort"]
 build-std-features = []
