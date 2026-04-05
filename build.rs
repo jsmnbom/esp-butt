@@ -84,39 +84,46 @@ mod buttplug_data {
     sync::Arc,
   };
 
+  use buttplug_core::message::{InputType, OutputType};
   use buttplug_server_device_config::{
     BaseDeviceIdentifier,
     ProtocolCommunicationSpecifier,
     ServerDeviceDefinition,
+    ServerDeviceDefinitionBuilder,
     load_protocol_configs,
   };
-  use compact_str::CompactString;
   use serde::Serialize;
-  use serde_describe::SelfDescribed;
 
   #[derive(Serialize)]
   pub struct ButtplugData {
-    // We hope none of ProtocolCommunicationSpecifier needs SelfDescribed :P
-    base_communication_specifiers: HashMap<CompactString, Vec<ProtocolCommunicationSpecifier>>,
+    base_communication_specifiers: HashMap<String, Vec<ProtocolCommunicationSpecifier>>,
     // Reverse map of ServerDeviceDefinition to its identifiers
-    base_device_definitions:
-      Vec<(Vec<BaseDeviceIdentifier>, Vec<u8>)>, // We store the raw postcard data here and only deserialize on demand to save memory and startup time>,
+    base_device_definitions: Vec<(ServerDeviceDefinition, Vec<BaseDeviceIdentifier>)>,
     // Length of base_device_definitions when unpacked - aka total count of identifiers - used to preallocate the HashMap when loading
     base_device_definitions_count: usize,
   }
 
   impl ButtplugData {
-    pub fn build() -> anyhow::Result<Vec<u8>> {
+    pub fn build() -> anyhow::Result<Self> {
       let dcm = load_protocol_configs(&None, &None, false)?.finish()?;
 
-      let base_communication_specifiers = dcm.base_communication_specifiers().iter().filter_map(|(k, v)| {
-        if v.iter().any(|specifier| matches!(specifier, ProtocolCommunicationSpecifier::BluetoothLE(..))) {
-          Some((k.clone(), v.clone()))
-        } else {
-          None
-        }
-      }).collect::<HashMap<_, _>>();
+      // Filter communication specifiers to only include those with BluetoothLE.
+      let base_communication_specifiers = dcm
+        .base_communication_specifiers()
+        .iter()
+        .filter_map(|(k, v)| {
+          if v
+            .iter()
+            .any(|specifier| matches!(specifier, ProtocolCommunicationSpecifier::BluetoothLE(..)))
+          {
+            Some((k.clone(), v.clone()))
+          } else {
+            None
+          }
+        })
+        .collect::<HashMap<_, _>>();
 
+      // Group device definitions by pointer, filtering out those that don't have any valid communication specifiers (non BluetoothLE).
       let mut base_device_definitions_groups: HashMap<
         *const ServerDeviceDefinition,
         (ServerDeviceDefinition, Vec<BaseDeviceIdentifier>),
@@ -134,19 +141,74 @@ mod buttplug_data {
           .push(identifier.clone());
       }
 
+      // Filter out any definitions that only support hw_position_with_duration outputs.
+      // Filter out any inputs that aren't battery.
+
       let base_device_definitions = base_device_definitions_groups
         .into_values()
-        .map(|(def, ids)| (ids, postcard::to_allocvec(&SelfDescribed(def)).unwrap()))
+        .filter_map(|(def, ids)| {
+          let mut builder = ServerDeviceDefinitionBuilder::new(def.name(), &def.id());
+          if let Some(base_id) = def.base_id() {
+            builder.base_id(base_id);
+          }
+          builder.display_name(def.display_name());
+          if let Some(protocol_variant) = def.protocol_variant() {
+            builder.protocol_variant(protocol_variant);
+          }
+          builder.message_gap_ms(def.message_gap_ms());
+
+          builder.allow(def.allow());
+          builder.deny(def.deny());
+          builder.index(def.index());
+
+          for (_, feature) in def.features() {
+            let mut feature = feature.clone();
+            feature.description = "".into(); // Strip descriptions to save space, as they aren't used.
+
+            if feature
+              .output
+              .iter()
+              .any(|output| output.output_type() != OutputType::HwPositionWithDuration)
+            {
+              builder.add_feature(&feature);
+            } else if feature
+              .input
+              .iter()
+              .any(|input| input.input_type() == InputType::Battery)
+            {
+              builder.add_feature(&feature);
+            }
+          }
+          let def = builder.finish();
+          if def.features().is_empty() {
+            return None;
+          }
+
+          Some((def, ids))
+        })
         .collect::<Vec<_>>();
 
-      let data = Self {
-        base_communication_specifiers: base_communication_specifiers,
-        base_device_definitions: base_device_definitions,
-        base_device_definitions_count: dcm.base_device_definitions().len(),
-      };
+      // Now filter out any communication specifiers that aren't used by any device definitions.
+      let base_communication_specifiers = base_communication_specifiers
+        .into_iter()
+        .filter(|(protocol, _)| {
+          base_device_definitions
+            .iter()
+            .any(|(_, ids)| ids.iter().any(|id| id.protocol() == protocol.as_str()))
+        })
+        .collect::<HashMap<_, _>>();
 
-      let out = postcard::to_allocvec(&data)?;
-      Ok(out)
+      // Finally count the total number of device definitions by counting the identifiers, so we can preallocate the HashMap when loading.
+      let base_device_definitions_count = base_device_definitions
+        .iter()
+        .map(|(_, ids)| ids.len())
+        .sum();
+
+      Ok(Self {
+        base_communication_specifiers,
+        base_device_definitions,
+        base_device_definitions_count,
+      })
     }
   }
 
@@ -155,9 +217,19 @@ mod buttplug_data {
     let out_dir = Path::new(&out_dir).canonicalize()?;
 
     let data = ButtplugData::build()?;
+    let out = postcard::to_allocvec(&data)?;
+    std::fs::write(
+      out_dir.join("data.bin.size"),
+      postcard::to_allocvec(&(out.len() as u32))?,
+    )?;
+    std::fs::write(out_dir.join("data.bin"), &out)?;
+    std::fs::write(
+      out_dir.join("data.json"),
+      serde_json::to_string_pretty(&data)?,
+    )?;
     std::fs::write(
       out_dir.join("data.bin.gz"),
-      miniz_oxide::deflate::compress_to_vec(&data, 6),
+      miniz_oxide::deflate::compress_to_vec(&out, 6),
     )?;
 
     Ok(())

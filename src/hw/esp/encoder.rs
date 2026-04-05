@@ -172,7 +172,7 @@ impl Encoder {
 
     let event = if a && b {
       NavigationEvent::Down
-    } else if !a && b {
+    } else if a && !b {
       NavigationEvent::Up
     } else {
       return;

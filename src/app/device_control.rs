@@ -11,18 +11,29 @@ use embedded_graphics::prelude::Point;
 use litemap::LiteMap;
 
 use crate::{
-  app::{App, AppState, MAIN_FONT, NavigationEvent, SMALL_FONT, SliderEvent},
+  app::{App, MAIN_FONT, NavigationEvent, SMALL_FONT, SliderEvent},
   hw,
   utils,
 };
 
-#[derive(Debug)]
+
 pub struct DeviceControlOutput {
   feature: ClientDeviceFeature,
   step_count: u32,
   step_limit: RangeInclusive<i32>,
   value: u16,
   step: i32,
+}
+
+impl std::fmt::Debug for DeviceControlOutput {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("DeviceControlOutput")
+      .field("step_count", &self.step_count)
+      .field("step_limit", &self.step_limit)
+      .field("value", &self.value)
+      .field("step", &self.step)
+      .finish()
+  }
 }
 
 #[derive(Debug)]
@@ -50,19 +61,13 @@ impl App {
     let mut outputs = LiteMap::new();
     // TODO: support multiple output features per device by mapping slider index → feature index, and adding a slider for each output feature. For now just take the first vibrate output feature we find.
     for (index, feature) in device.outputs(OutputType::Vibrate).iter().enumerate() {
-      let output = feature
-        .feature()
-        .output()
-        .as_ref()
-        .unwrap()
-        .get(OutputType::Vibrate)
-        .unwrap();
+      let limits = feature.feature().get_output_limits(OutputType::Vibrate).unwrap();
       outputs.insert(
         index as u8,
         DeviceControlOutput {
           feature: feature.clone(),
-          step_count: output.step_count(),
-          step_limit: output.step_limit().clone(),
+          step_count: limits.step_count(),
+          step_limit: limits.step_limit().clone(),
           value: 0,
           step: 0,
         },

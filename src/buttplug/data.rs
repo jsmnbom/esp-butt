@@ -3,113 +3,59 @@ use std::{collections::HashMap, sync::Arc};
 use buttplug_server_device_config::{
   BaseDeviceIdentifier,
   DeviceConfigurationManager,
-  GetBaseDeviceDefinition,
   ProtocolCommunicationSpecifier,
   ServerDeviceDefinition,
-  UserDeviceIdentifier,
 };
-use compact_str::CompactString;
-use dashmap::DashMap;
 use serde::Deserialize;
-use serde_describe::SelfDescribed;
 use tracing::instrument;
 
+#[cfg(target_os = "espidf")]
+use crate::utils::heap::{HEAP, MALLOC_CAP_EXTERNAL};
+
+static BUTTPLUG_DATA_SIZE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/buttplug/data.bin.size"));
 static BUTTPLUG_DATA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/buttplug/data.bin.gz"));
+// const RSSI_FEATURE_UUID: uuid::Uuid = uuid::uuid!("00000000-0000-0000-0000-000000000001");
 
 #[derive(Debug, Deserialize)]
-pub struct RawButtplugData {
-  base_communication_specifiers: HashMap<CompactString, Vec<ProtocolCommunicationSpecifier>>,
-  base_device_definitions: Vec<(Vec<BaseDeviceIdentifier>, Vec<u8>)>,
-  base_device_definitions_count: usize,
-}
-
-enum DeviceDefinition {
-  Unloaded(Vec<u8>),
-  Loaded(Arc<ServerDeviceDefinition>),
-}
-
 pub struct ButtplugData {
-  base_device_definitions: DashMap<BaseDeviceIdentifier, Arc<DeviceDefinition>>,
+  base_communication_specifiers: HashMap<String, Vec<ProtocolCommunicationSpecifier>>,
+  base_device_definitions:
+    Vec<(ServerDeviceDefinition, Vec<BaseDeviceIdentifier>)>,
+  base_device_definitions_count: usize,
 }
 
 impl ButtplugData {
   #[instrument]
   pub fn load() -> anyhow::Result<DeviceConfigurationManager> {
+    #[cfg(target_os = "espidf")]
+    let _guard = HEAP.use_caps(MALLOC_CAP_EXTERNAL);
+
     log::info!("Decompressing...");
-    let data = miniz_oxide::inflate::decompress_to_vec(BUTTPLUG_DATA)
+    let size = postcard::from_bytes::<u32>(BUTTPLUG_DATA_SIZE)
+      .map_err(|e| anyhow::anyhow!("Postcard deserialization error: {:?}", e))? as usize;
+    let mut data = vec![0u8; size];
+    miniz_oxide::inflate::decompress_slice_iter_to_slice(&mut data, core::iter::once(BUTTPLUG_DATA), false, true)
       .map_err(|_| anyhow::anyhow!("Decompression error!"))?;
     log::info!("Deserializing...");
-    let raw: RawButtplugData = postcard::from_bytes(&data)
+    let Self {
+      base_communication_specifiers,
+      base_device_definitions: raw_base_device_definitions,
+      base_device_definitions_count,
+    } = postcard::from_bytes(&data)
       .map_err(|e| anyhow::anyhow!("Postcard deserialization error: {:?}", e))?;
 
-    // log::info!("Building device configuration manager...");
-    let base_communication_specifiers = raw.base_communication_specifiers.clone();
-
-    log::info!(
-      "Raw data loaded: {} communication specifiers, {} device definitions ({} total identifiers)",
-      raw.base_communication_specifiers.len(),
-      raw.base_device_definitions.len(),
-      raw.base_device_definitions_count
-    );
-
-    let base_device_definitions = DashMap::with_capacity(raw.base_device_definitions_count);
-    for (identifiers, raw_def) in raw.base_device_definitions {
-      let def = Arc::new(DeviceDefinition::Unloaded(raw_def));
-      for identifier in identifiers {
-        base_device_definitions.insert(identifier, def.clone());
+    let mut base_device_definitions = HashMap::with_capacity(base_device_definitions_count);
+    for (def, ids) in raw_base_device_definitions {
+      let def = Arc::new(def);
+      for id in ids {
+        base_device_definitions.insert(id, def.clone());
       }
     }
-
-    let data = ButtplugData {
-      base_device_definitions,
-    };
+    log::info!("Done building maps.");
 
     Ok(DeviceConfigurationManager::new(
       base_communication_specifiers,
-      HashMap::new(),
-      Some(Box::new(data)),
+      base_device_definitions,
     ))
-  }
-}
-
-impl GetBaseDeviceDefinition for ButtplugData {
-  fn get_base_device_definition(
-    &self,
-    identifier: &UserDeviceIdentifier,
-  ) -> Option<Arc<ServerDeviceDefinition>> {
-    if let Some(mut entry) = self
-      .base_device_definitions
-      .get_mut(&BaseDeviceIdentifier::new(
-        identifier.protocol(),
-        identifier.identifier(),
-      ))
-    {
-      match &**entry.value_mut() {
-        DeviceDefinition::Loaded(def) => Some(def.clone()),
-        DeviceDefinition::Unloaded(raw) => {
-          let wrapped_loaded: SelfDescribed<ServerDeviceDefinition> =
-            postcard::from_bytes(raw).unwrap();
-          let loaded = Arc::new(wrapped_loaded.0);
-          *entry = Arc::new(DeviceDefinition::Loaded(loaded.clone()));
-          Some(loaded)
-        }
-      }
-    } else if let Some(mut entry) = self
-      .base_device_definitions
-      .get_mut(&BaseDeviceIdentifier::new_default(identifier.protocol()))
-    {
-      match &**entry.value_mut() {
-        DeviceDefinition::Loaded(def) => Some(def.clone()),
-        DeviceDefinition::Unloaded(raw) => {
-          let wrapped_loaded: SelfDescribed<ServerDeviceDefinition> =
-            postcard::from_bytes(raw).unwrap();
-          let loaded = Arc::new(wrapped_loaded.0);
-          *entry = Arc::new(DeviceDefinition::Loaded(loaded.clone()));
-          Some(loaded)
-        }
-      }
-    } else {
-      None
-    }
   }
 }

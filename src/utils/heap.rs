@@ -10,7 +10,7 @@ pub const MALLOC_CAP_INTERNAL: u32 = sys::MALLOC_CAP_8BIT | sys::MALLOC_CAP_INTE
 pub const MALLOC_CAP_EXTERNAL: u32 = sys::MALLOC_CAP_8BIT | sys::MALLOC_CAP_SPIRAM;
 
 #[global_allocator]
-pub static HEAP: EspAlloc = EspAlloc::new(MALLOC_CAP_EXTERNAL);
+pub static HEAP: EspAlloc = EspAlloc::new(MALLOC_CAP_INTERNAL);
 
 const BAR_WIDTH: usize = 35;
 
@@ -23,6 +23,31 @@ impl EspAlloc {
     Self {
       malloc_caps: AtomicU32::new(caps),
     }
+  }
+
+  #[allow(dead_code)]
+  pub fn set_caps(&self, caps: u32) {
+    self.malloc_caps.store(caps, Ordering::SeqCst);
+  }
+
+  /// Temporarily switch caps for the duration of the returned guard.
+  /// Restores the previous caps when the guard is dropped.
+  #[allow(dead_code)]
+  pub fn use_caps(&self, caps: u32) -> CapsGuard<'_> {
+    let prev = self.malloc_caps.swap(caps, Ordering::SeqCst);
+    CapsGuard { heap: self, prev }
+  }
+}
+
+#[allow(dead_code)]
+pub struct CapsGuard<'a> {
+  heap: &'a EspAlloc,
+  prev: u32,
+}
+
+impl Drop for CapsGuard<'_> {
+  fn drop(&mut self) {
+    self.heap.malloc_caps.store(self.prev, Ordering::SeqCst);
   }
 }
 

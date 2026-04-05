@@ -28,7 +28,8 @@ impl Display {
 
     display.init()?;
     display.set_rotation(DisplayRotation::Rotate180).unwrap();
-    display.flush()?;
+    display.get_mut_canvas().get_mut_buffer().fill(0);
+    display.flush_all()?;
 
     Ok(Display(display))
   }

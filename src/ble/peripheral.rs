@@ -6,7 +6,7 @@ use crate::ble::{AdReport, AdStructure, Address, BleError, utils};
 pub struct PeripheralProperties {
   pub address: Address,
   pub rssi: i8,
-  pub name: compact_str::CompactString,
+  pub name: String,
   pub manufacturer_data: Vec<(u16, Vec<u8>)>,
   pub services: Vec<Uuid>,
 }
@@ -16,7 +16,7 @@ impl PeripheralProperties {
     Self {
       address,
       rssi,
-      name: compact_str::CompactString::new(""),
+      name: String::new(),
       manufacturer_data: Vec::new(),
       services: Vec::new(),
     }

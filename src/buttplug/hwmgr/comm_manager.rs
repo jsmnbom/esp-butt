@@ -25,7 +25,6 @@ use crate::ble::{
   Discovery,
   DiscoveryListener,
   PeripheralProperties,
-  init,
 };
 
 #[derive(Clone)]
@@ -33,7 +32,6 @@ pub struct BleCommunicationManagerBuilder {}
 
 impl Default for BleCommunicationManagerBuilder {
   fn default() -> Self {
-    init();
     Self {}
   }
 }

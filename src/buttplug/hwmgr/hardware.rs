@@ -20,7 +20,6 @@ use buttplug_server_device_config::{
   Endpoint,
   ProtocolCommunicationSpecifier,
 };
-use compact_str::CompactString;
 use futures::{
   FutureExt,
   future::{self, BoxFuture},
@@ -79,12 +78,12 @@ impl HardwareConnector for BleHardwareConnector {
 }
 
 pub struct BleHardwareSpecializer {
-  name: CompactString,
+  name: String,
   device: Option<Client>,
 }
 
 impl BleHardwareSpecializer {
-  pub fn new(name: CompactString, device: Client) -> Self {
+  pub fn new(name: String, device: Client) -> Self {
     Self {
       name,
       device: Some(device),
@@ -170,7 +169,7 @@ impl HardwareSpecializer for BleHardwareSpecializer {
 struct BleHardware {
   #[allow(dead_code)]
   device: Client,
-  name: CompactString,
+  name: String,
   event_stream: broadcast::Sender<HardwareEvent>,
   endpoint_characteristic_map: Vec<(Endpoint, Characteristic)>,
 }
@@ -178,7 +177,7 @@ struct BleHardware {
 impl BleHardware {
   pub fn new(
     device: Client,
-    name: CompactString,
+    name: String,
     endpoint_characteristic_map: Vec<(Endpoint, Characteristic)>,
     attr_handle_endpoint_map: Vec<(u16, Endpoint)>,
   ) -> Self {

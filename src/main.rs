@@ -21,6 +21,8 @@ fn main() -> anyhow::Result<()> {
     .install();
 
   hw::init()?;
+  ble::init();
+  buttplug::init();
 
   utils::report::start_reporting(core::time::Duration::from_secs(5));
 
@@ -66,6 +68,8 @@ async fn main() -> anyhow::Result<()> {
 
   tracing_log::LogTracer::init()?;
 
+  tracy_client::register_demangler!();
+
   tracing::subscriber::set_global_default(
     tracing_subscriber::fmt()
       .with_max_level(tracing::Level::DEBUG)
@@ -74,6 +78,8 @@ async fn main() -> anyhow::Result<()> {
       .finish()
       .with(tracing_tracy::TracyLayer::default()),
   )?;
+
+  buttplug::init();
 
   log::info!("Hello, world!");
 

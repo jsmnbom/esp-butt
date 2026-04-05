@@ -1,6 +1,5 @@
 use std::{pin::Pin, sync::Arc};
 
-use buttplug_client::ButtplugClientDevice;
 use buttplug_client::ButtplugClientEvent;
 use futures::{Stream, stream::StreamExt};
 use futures_concurrency::prelude::*;
@@ -75,8 +74,6 @@ impl App {
     // Draw immediately so stale pixels from previous runs are cleared while
     // buttplug initialization and data loading are still in flight.
     self.draw().await?;
-
-    buttplug::init();
 
     let (server, connector, discovery_stream) = buttplug::create_buttplug()?;
     self.server = Some(server.clone());
