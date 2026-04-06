@@ -208,6 +208,10 @@ impl Client {
     self.services.iter().find(|s| s.uuid == uuid)
   }
 
+  pub fn conn_handle(&self) -> u16 {
+    self.state.conn_handle.load(Ordering::SeqCst)
+  }
+
   pub fn disconnect(&self) -> Result<(), BleError> {
     if !self.state.connected.load(Ordering::SeqCst) {
       return Ok(());
@@ -227,6 +231,12 @@ impl Client {
 
     Ok(())
   }
+}
+
+pub fn read_rssi_for_conn(conn_handle: u16) -> Result<i8, BleError> {
+  let mut rssi: i8 = 0;
+  esp!(unsafe { sys::ble_gap_conn_rssi(conn_handle, &mut rssi) })?;
+  Ok(rssi)
 }
 
 extern "C" fn on_gap_event(event: *mut sys::ble_gap_event, arg: *mut c_void) -> i32 {

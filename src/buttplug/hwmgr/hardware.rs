@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -25,7 +26,7 @@ use futures::{
   future::{self, BoxFuture},
 };
 use log::{error, trace, warn};
-use tokio::sync::broadcast;
+use tokio::sync::{Notify, broadcast, watch};
 use tracing::info_span;
 
 use crate::ble::{
@@ -41,12 +42,20 @@ use crate::ble::{
 #[derive(Debug)]
 pub struct BleHardwareConnector {
   properties: PeripheralProperties,
+  rssi_notify: Arc<Notify>,
+  rssi_tx: watch::Sender<i8>,
 }
 
 impl BleHardwareConnector {
-  pub fn new(properties: &PeripheralProperties) -> Self {
+  pub fn new(
+    properties: &PeripheralProperties,
+    rssi_notify: Arc<Notify>,
+    rssi_tx: watch::Sender<i8>,
+  ) -> Self {
     Self {
       properties: properties.clone(),
+      rssi_notify,
+      rssi_tx,
     }
   }
 }
@@ -56,7 +65,12 @@ impl HardwareConnector for BleHardwareConnector {
   fn specifier(&self) -> ProtocolCommunicationSpecifier {
     ProtocolCommunicationSpecifier::BluetoothLE(BluetoothLESpecifier::new_from_device(
       &self.properties.name,
-      &self.properties.manufacturer_data.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+      &self
+        .properties
+        .manufacturer_data
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect(),
       &self.properties.services,
     ))
   }
@@ -73,6 +87,8 @@ impl HardwareConnector for BleHardwareConnector {
     Ok(Box::new(BleHardwareSpecializer::new(
       self.properties.name.clone(),
       client,
+      self.rssi_notify.clone(),
+      self.rssi_tx.clone(),
     )))
   }
 }
@@ -80,13 +96,22 @@ impl HardwareConnector for BleHardwareConnector {
 pub struct BleHardwareSpecializer {
   name: String,
   device: Option<Client>,
+  rssi_notify: Arc<Notify>,
+  rssi_tx: watch::Sender<i8>,
 }
 
 impl BleHardwareSpecializer {
-  pub fn new(name: String, device: Client) -> Self {
+  pub fn new(
+    name: String,
+    device: Client,
+    rssi_notify: Arc<Notify>,
+    rssi_tx: watch::Sender<i8>,
+  ) -> Self {
     Self {
       name,
       device: Some(device),
+      rssi_notify,
+      rssi_tx,
     }
   }
 }
@@ -154,6 +179,8 @@ impl HardwareSpecializer for BleHardwareSpecializer {
       self.name.clone(),
       endpoint_characteristic_map,
       attr_handle_endpoint_map,
+      self.rssi_notify.clone(),
+      self.rssi_tx.clone(),
     );
     Ok(Hardware::new(
       &name,
@@ -180,55 +207,73 @@ impl BleHardware {
     name: String,
     endpoint_characteristic_map: Vec<(Endpoint, Characteristic)>,
     attr_handle_endpoint_map: Vec<(u16, Endpoint)>,
+    rssi_notify: Arc<Notify>,
+    rssi_tx: watch::Sender<i8>,
   ) -> Self {
     let (event_stream, _) = broadcast::channel(16);
     let event_stream_clone = event_stream.clone();
 
     let mut device_events = device.events();
-    let address = format!("{}", device.address());
+    let address = device.address().to_string();
+    let conn_handle = device.conn_handle();
 
     async_manager::spawn(
       async move {
         loop {
-          match device_events.recv().await {
-            Ok(Ok(event)) => match event {
-              ClientEvent::Notification(Notification { attr_handle, data }) => {
-                log::info!("Received notification for attribute handle {}", attr_handle);
+          tokio::select! {
+            biased;
 
-                if let Some((_, endpoint)) = attr_handle_endpoint_map
-                  .iter()
-                  .find(|(handle, _)| *handle == attr_handle)
-                {
-                  event_stream_clone
-                    .send(HardwareEvent::Notification(
-                      address.clone(),
-                      endpoint.clone(),
-                      data,
-                    ))
-                    .unwrap();
+            _ = rssi_notify.notified() => {
+              match crate::ble::read_rssi_for_conn(conn_handle) {
+                Ok(rssi) => {
+                  rssi_tx.send_replace(rssi);
+                }
+                Err(e) => { log::warn!("[{}] Failed to read connected RSSI: {:?}", address, e); }
+              }
+            }
+            event = device_events.recv() => {
+              match event {
+                Ok(Ok(event)) => match event {
+                  ClientEvent::Notification(Notification { attr_handle, data }) => {
+                    log::info!("[{}] Notification: {} {:?}", address, attr_handle, data);
+
+                    if let Some((_, endpoint)) = attr_handle_endpoint_map
+                      .iter()
+                      .find(|(handle, _)| *handle == attr_handle)
+                    {
+                      event_stream_clone
+                        .send(HardwareEvent::Notification(
+                          address.clone(),
+                          endpoint.clone(),
+                          data,
+                        ))
+                        .unwrap();
+                    }
+                  }
+                  ClientEvent::Disconnected => {
+                    log::info!("[{}] Device disconnected", address);
+                    event_stream_clone
+                      .send(HardwareEvent::Disconnected(address.clone()))
+                      .unwrap();
+                  }
+                  _ => {
+                    log::info!("[{}] Received unknown device event: {:?}", address, event);
+                  }
+                },
+                Ok(Err(e)) => {
+                  log::error!("[{}] Error in device event: {:?}", address, e);
+                }
+                Err(e) => {
+                  log::error!("[{}] Device event stream closed: {:?}", address, e);
+                  return;
                 }
               }
-              ClientEvent::Disconnected => {
-                log::info!("Device disconnected");
-                event_stream_clone
-                  .send(HardwareEvent::Disconnected(address.clone()))
-                  .unwrap();
-              }
-              _ => {
-                log::info!("Received unknown device event: {:?}", event);
-              }
-            },
-            Ok(Err(e)) => {
-              log::error!("Error in device event: {:?}", e);
             }
-            Err(e) => {
-              log::error!("Device event stream closed: {:?}", e);
-              return;
-            }
+
           }
         }
       },
-      info_span!("ble-hardware"),
+      info_span!("ble-hardware", address = device.address().to_string()),
     );
 
     Self {

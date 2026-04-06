@@ -3,7 +3,6 @@ mod display;
 use std::{io, thread, time::Duration};
 
 use anyhow::Context;
-pub use display::*;
 use futures::Stream;
 use image::{DynamicImage, ImageBuffer, Luma};
 use ratatui::{
@@ -32,6 +31,8 @@ use crate::{
   app::{AppEvent, NavigationEvent, SliderEvent},
   utils,
 };
+
+pub use display::*;
 
 pub const SLIDER_MAX_VALUE: u16 = 4095;
 
@@ -85,10 +86,10 @@ impl HardwareMock {
   fn spawn_ticker_task(input_tx: broadcast::Sender<AppEvent>) {
     utils::task::spawn(
       async move {
-        tokio::time::sleep(Duration::from_secs(60)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
         loop {
           let _ = input_tx.send(AppEvent::Tick);
-          tokio::time::sleep(Duration::from_secs(60)).await;
+          tokio::time::sleep(Duration::from_secs(1)).await;
         }
       },
       c"mock-ticker",

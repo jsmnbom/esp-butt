@@ -1,6 +1,6 @@
 use buttplug_client::ButtplugClientEvent;
 
-use crate::buttplug::deferred::DiscoveredDevice;
+use crate::buttplug::backdoor::ButtplugBackdoorEvent;
 
 #[derive(Debug, Clone, Copy)]
 pub enum NavigationEvent {
@@ -26,12 +26,11 @@ pub enum AppEvent {
   Slider(SliderEvent),
   /// Events from the Buttplug client, such as device connections/disconnections and messages from devices
   ButtplugEvent(ButtplugClientEvent),
+  /// Events from the "backdoor" channel, such as discovered devices and RSSI updates
+  BackdoorEvent(ButtplugBackdoorEvent),
   /// Signals that the display should be redrawn, e.g. because the UI state has changed and the display needs to reflect that
   Draw,
   /// Periodic tick for polling device state (battery, RSSI)
   Tick,
   Quit,
-  /// A device has been matched to a known protocol and is ready to connect;
-  /// the app stores its approval handle and notifies it when the user initiates connect.
-  DeviceDiscovered(DiscoveredDevice),
 }

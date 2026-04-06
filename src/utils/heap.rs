@@ -10,7 +10,7 @@ pub const MALLOC_CAP_INTERNAL: u32 = sys::MALLOC_CAP_8BIT | sys::MALLOC_CAP_INTE
 pub const MALLOC_CAP_EXTERNAL: u32 = sys::MALLOC_CAP_8BIT | sys::MALLOC_CAP_SPIRAM;
 
 #[global_allocator]
-pub static HEAP: EspAlloc = EspAlloc::new(MALLOC_CAP_INTERNAL);
+pub static HEAP: EspAlloc = EspAlloc::new(MALLOC_CAP_EXTERNAL);
 
 const BAR_WIDTH: usize = 35;
 

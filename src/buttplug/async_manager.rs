@@ -1,4 +1,4 @@
-use std::{ffi::CStr};
+use std::ffi::CStr;
 
 use buttplug_core::util::async_manager::AsyncManager;
 use futures::{future::BoxFuture, task::FutureObj};
@@ -17,54 +17,56 @@ impl AsyncManager for EspAsyncManager {
     let mut stack_size = 12 * 1024;
     let priority = 5;
 
-    log::info!(
-      "Spawning task in async manager with span name: {:?}",
-      span_name
-    );
-
     match span_name {
       Some("ServerDeviceManager event loop") => {
         name = c"devicemgr";
-        stack_size = 20 * 1024;
       }
       Some("InProcessClientConnectorEventSenderLoop") => {
         name = c"connector";
-        stack_size = 8 * 1024;
+        stack_size = 4 * 1024;
       }
       Some("ButtplugClient event loop") => {
         name = c"clientloop";
+        stack_size = 8 * 1024;
       }
       Some("DeviceTask") => {
         name = c"devicecomm";
         stack_size = 8 * 1024;
       }
-      Some("DeviceEventForwardingTask") => {
+      Some("DeviceEventForwarding") => {
         name = c"deviceforward";
         stack_size = 8 * 1024;
       }
       Some("device creation") => {
         name = c"devicecreation";
         stack_size = 16 * 1024;
-      },
+      }
       Some("deferred-comm") => {
         name = c"deferredcomm";
-        stack_size = 8 * 1024;
-      },
+        stack_size = 4 * 1024;
+      }
       Some("ble-hardware") => {
         name = c"blehw";
         stack_size = 8 * 1024;
-      },
+      }
       Some("PingTimerDropper") => {
         name = c"pingdrop";
         stack_size = 8 * 1024;
-      },
+      }
       Some("BtleplugAdapterTask") => {
         name = c"btleadapter";
-      },
+      }
       Some("BtlePlugHardware Drop") => {
         name = c"btledrop";
-      },
+      }
       _ => {}
+    }
+
+    if name == c"unnamed" {
+      log::warn!(
+        "Spawning task with unnamed span: {:?}. Consider adding a name to the span for better debugging.",
+        span_name
+      );
     }
 
     utils::task::spawn(future, name, stack_size, core, priority);

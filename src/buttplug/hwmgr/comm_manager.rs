@@ -7,52 +7,41 @@ use std::{
 };
 
 use buttplug_core::ButtplugResultFuture;
-use buttplug_server::device::hardware::communication::{
-  HardwareCommunicationManager,
-  HardwareCommunicationManagerBuilder,
-  HardwareCommunicationManagerEvent,
-};
+use buttplug_server::device::hardware::communication::HardwareCommunicationManager;
 use futures::FutureExt;
 use log::trace;
 use rustc_hash::FxBuildHasher;
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::{self, Sender};
 
 use super::hardware::BleHardwareConnector;
-use crate::ble::{
-  AdEventType,
-  AdReport,
-  Address,
-  Discovery,
-  DiscoveryListener,
-  PeripheralProperties,
+use crate::{
+  ble::{AdEventType, AdReport, Address, Discovery, DiscoveryListener, PeripheralProperties},
+  buttplug::deferred::{
+    CustomHardwareCommunicationManagerBuilder,
+    CustomHardwareCommunicationManagerEvent,
+  },
 };
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct BleCommunicationManagerBuilder {}
 
-impl Default for BleCommunicationManagerBuilder {
-  fn default() -> Self {
-    Self {}
-  }
-}
-
-impl HardwareCommunicationManagerBuilder for BleCommunicationManagerBuilder {
+impl CustomHardwareCommunicationManagerBuilder for BleCommunicationManagerBuilder {
   fn finish(
     &mut self,
-    sender: Sender<HardwareCommunicationManagerEvent>,
+    sender: Sender<CustomHardwareCommunicationManagerEvent>,
   ) -> Box<dyn HardwareCommunicationManager> {
     Box::new(BleCommunicationManager::new(sender))
   }
 }
 
 pub struct BleCommunicationManager {
-  sender: Sender<HardwareCommunicationManagerEvent>,
+  sender: Sender<CustomHardwareCommunicationManagerEvent>,
   scanning_status: Arc<AtomicBool>,
   peripherals: HashMap<Address, PeripheralProperties, FxBuildHasher>,
 }
 
 impl BleCommunicationManager {
-  pub fn new(sender: Sender<HardwareCommunicationManagerEvent>) -> Self {
+  pub fn new(sender: Sender<CustomHardwareCommunicationManagerEvent>) -> Self {
     Self {
       sender,
       scanning_status: Arc::new(AtomicBool::new(false)),
@@ -61,8 +50,8 @@ impl BleCommunicationManager {
   }
 
   fn maybe_add_peripheral(
-    sender: &Sender<HardwareCommunicationManagerEvent>,
-    properties: &PeripheralProperties,
+    sender: &mpsc::Sender<CustomHardwareCommunicationManagerEvent>,
+    properties: &mut PeripheralProperties,
   ) {
     if properties.name.is_empty() || properties.services.is_empty() {
       trace!(
@@ -72,13 +61,22 @@ impl BleCommunicationManager {
       return;
     }
     let name = properties.name.to_string();
-    let address = format!("{}", properties.address);
+    let address = properties.address.to_string();
+    let rssi_rx = properties.take_rssi_receiver();
+    let rssi_notify = Arc::new(tokio::sync::Notify::new());
+    let rssi_tx = properties.rssi_sender();
 
-    let creator = Box::new(BleHardwareConnector::new(properties));
+    let creator = Box::new(BleHardwareConnector::new(
+      properties,
+      rssi_notify.clone(),
+      rssi_tx,
+    ));
     if sender
-      .try_send(HardwareCommunicationManagerEvent::DeviceFound {
+      .try_send(CustomHardwareCommunicationManagerEvent::DeviceFound {
         name,
-        address,
+        address: address.clone(),
+        rssi_rx,
+        rssi_notify,
         creator,
       })
       .is_err()
@@ -98,7 +96,9 @@ impl HardwareCommunicationManager for BleCommunicationManager {
 
   fn start_scanning(&mut self) -> ButtplugResultFuture {
     self.scanning_status.store(true, Ordering::Relaxed);
-    Discovery::new(self).start();
+    Discovery::new(self)
+      .filter_duplicates(false)
+      .start();
     async { Ok(()) }.boxed()
   }
 
@@ -125,15 +125,25 @@ impl DiscoveryListener for BleCommunicationManager {
     ) {
       return;
     }
-    let entry = self
-      .peripherals
-      .entry(report.address)
-      .or_insert_with(|| PeripheralProperties::new(report.address, report.rssi));
-    if let Err(e) = entry.update(report) {
-      log::warn!("Failed to update peripheral properties: {:?}", e);
-    }
 
-    Self::maybe_add_peripheral(&self.sender, entry);
+    let updated = {
+      let entry = self
+        .peripherals
+        .entry(report.address)
+        .or_insert_with(|| PeripheralProperties::new(report));
+      match entry.update(report) {
+        Ok(updated) => updated,
+        Err(e) => {
+          log::warn!("Failed to update peripheral properties: {:?}", e);
+          false
+        }
+      }
+    };
+    if updated {
+      if let Some(entry) = self.peripherals.get_mut(&report.address) {
+        Self::maybe_add_peripheral(&self.sender, entry);
+      }
+    }
   }
 
   fn on_complete(&mut self) {
@@ -141,6 +151,10 @@ impl DiscoveryListener for BleCommunicationManager {
       "BLE discovery complete. Found {} peripherals.",
       self.peripherals.len()
     );
-    // No-op
+    self.scanning_status.store(false, Ordering::Relaxed);
+    self
+      .sender
+      .try_send(CustomHardwareCommunicationManagerEvent::ScanningFinished)
+      .unwrap_or_else(|e| log::warn!("Failed to send scanning finished event: {:?}", e));
   }
 }

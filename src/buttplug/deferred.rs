@@ -11,31 +11,40 @@ use buttplug_server::device::hardware::{
     HardwareCommunicationManagerEvent,
   },
 };
-use futures::Stream;
-use tokio::sync::{Notify, mpsc};
+use tokio::sync::{Notify, mpsc, watch};
 use tracing::info_span;
 
-use crate::utils;
+use crate::{
+  buttplug::backdoor::{ButtplugBackdoorEvent, DiscoveredDevice},
+  utils,
+};
 
-/// Represents a device that buttplug has matched to a known protocol and is ready to
-#[derive(Debug, Clone)]
-pub struct DiscoveredDevice {
-  pub name: String,
-  pub address: Option<String>,
-  approve: Arc<Notify>,
+#[derive(Debug)]
+pub enum CustomHardwareCommunicationManagerEvent {
+  DeviceFound {
+    name: String,
+    address: String,
+    rssi_rx: Option<watch::Receiver<i8>>,
+    rssi_notify: std::sync::Arc<tokio::sync::Notify>,
+    creator: Box<dyn HardwareConnector>,
+  },
+  ScanningFinished,
 }
 
-impl DiscoveredDevice {
-  pub fn approval(&self) -> Arc<Notify> {
-    self.approve.clone()
-  }
+pub trait CustomHardwareCommunicationManagerBuilder: Send {
+  fn finish(
+    &mut self,
+    sender: mpsc::Sender<CustomHardwareCommunicationManagerEvent>,
+  ) -> Box<dyn HardwareCommunicationManager>;
 }
 
 struct DeferredHardwareConnector {
   inner: Box<dyn HardwareConnector + Send>,
   name: String,
   address: String,
-  discovered_tx: mpsc::Sender<DiscoveredDevice>,
+  rssi_rx: Option<watch::Receiver<i8>>,
+  rssi_notify: std::sync::Arc<tokio::sync::Notify>,
+  backdoor_tx: mpsc::Sender<ButtplugBackdoorEvent>,
 }
 
 impl std::fmt::Debug for DeferredHardwareConnector {
@@ -57,16 +66,22 @@ impl HardwareConnector for DeferredHardwareConnector {
     let approve = Arc::new(Notify::new());
     let discovered = DiscoveredDevice {
       name: self.name.clone(),
-      address: Some(self.address.clone()),
+      address: self.address.clone(),
+      rssi_rx: self.rssi_rx.take(),
+      rssi_notify: self.rssi_notify.clone(),
       approve: approve.clone(),
     };
 
-    self.discovered_tx.send(discovered).await.map_err(|e| {
-      ButtplugDeviceError::DeviceConnectionError(format!(
-        "Failed to notify app of pending device '{}': {:?}",
-        self.name, e
-      ))
-    })?;
+    self
+      .backdoor_tx
+      .send(ButtplugBackdoorEvent::DeviceDiscovered(discovered))
+      .await
+      .map_err(|e| {
+        ButtplugDeviceError::DeviceConnectionError(format!(
+          "Failed to notify app of pending device '{}': {:?}",
+          self.name, e
+        ))
+      })?;
 
     // Pause here until the user selects this device in the UI.
     approve.notified().await;
@@ -79,18 +94,16 @@ impl HardwareConnector for DeferredHardwareConnector {
 /// are not connected until the user explicitly selects them.
 pub struct DeferredCommunicationManagerBuilder<I> {
   inner: I,
-  discovered_tx: mpsc::Sender<DiscoveredDevice>,
+  backdoor_tx: mpsc::Sender<ButtplugBackdoorEvent>,
 }
 
-impl<I: HardwareCommunicationManagerBuilder> DeferredCommunicationManagerBuilder<I> {
-  pub fn new(inner: I) -> (Self, impl Stream<Item = DiscoveredDevice>) {
-    let (tx, rx) = mpsc::channel(16);
-    let stream = utils::stream::convert_mpsc_receiver_to_stream(rx);
-    (Self { inner, discovered_tx: tx }, stream)
+impl<I: CustomHardwareCommunicationManagerBuilder> DeferredCommunicationManagerBuilder<I> {
+  pub fn new(inner: I, backdoor_tx: mpsc::Sender<ButtplugBackdoorEvent>) -> Self {
+    Self { inner, backdoor_tx }
   }
 }
 
-impl<I: HardwareCommunicationManagerBuilder> HardwareCommunicationManagerBuilder
+impl<I: CustomHardwareCommunicationManagerBuilder> HardwareCommunicationManagerBuilder
   for DeferredCommunicationManagerBuilder<I>
 {
   fn finish(
@@ -98,15 +111,21 @@ impl<I: HardwareCommunicationManagerBuilder> HardwareCommunicationManagerBuilder
     sender: tokio::sync::mpsc::Sender<HardwareCommunicationManagerEvent>,
   ) -> Box<dyn HardwareCommunicationManager> {
     let (wrapper_tx, mut wrapper_rx) =
-      tokio::sync::mpsc::channel::<HardwareCommunicationManagerEvent>(64);
+      tokio::sync::mpsc::channel::<CustomHardwareCommunicationManagerEvent>(64);
 
-    let discovered_tx = self.discovered_tx.clone();
+    let backdoor_tx = self.backdoor_tx.clone();
 
     async_manager::spawn(
       async move {
         while let Some(event) = wrapper_rx.recv().await {
           let forwarded = match event {
-            HardwareCommunicationManagerEvent::DeviceFound { name, address, creator } => {
+            CustomHardwareCommunicationManagerEvent::DeviceFound {
+              name,
+              address,
+              rssi_rx,
+              rssi_notify,
+              creator,
+            } => {
               // Wrap the creator in a DeferredHardwareConnector
               HardwareCommunicationManagerEvent::DeviceFound {
                 name: name.clone(),
@@ -115,11 +134,15 @@ impl<I: HardwareCommunicationManagerBuilder> HardwareCommunicationManagerBuilder
                   inner: creator,
                   name,
                   address,
-                  discovered_tx: discovered_tx.clone(),
+                  rssi_rx,
+                  rssi_notify,
+                  backdoor_tx: backdoor_tx.clone(),
                 }),
               }
             }
-            other => other,
+            CustomHardwareCommunicationManagerEvent::ScanningFinished => {
+              HardwareCommunicationManagerEvent::ScanningFinished
+            }
           };
           if sender.send(forwarded).await.is_err() {
             break;

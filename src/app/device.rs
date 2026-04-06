@@ -2,19 +2,25 @@ use std::sync::{Arc, Weak};
 
 use anyhow::anyhow;
 use buttplug_client::ButtplugClientDevice;
-use tokio::sync::Notify;
+use tokio::sync::{Notify, watch};
 
-use crate::buttplug::deferred::DiscoveredDevice;
+use crate::buttplug::{backdoor::DiscoveredDevice};
 
 #[derive(Debug, Clone)]
 pub struct AppDevice {
   name: String,
-  address: Option<String>,
+  address: String,
   pretty_name: Option<String>,
   approval: Option<Arc<Notify>>,
   connected_device: Option<ButtplugClientDevice>,
   is_connecting: bool,
   server: Weak<buttplug_server::ButtplugServer>,
+  rssi_rx: Option<watch::Receiver<i8>>,
+  rssi_notify: Option<Arc<tokio::sync::Notify>>,
+  rssi: Option<i8>,
+  last_rssi_read: Option<std::time::Instant>,
+  // pub battery: Option<u32>,
+  // last_battery_read: Option<std::time::Instant>,
 }
 
 impl AppDevice {
@@ -30,6 +36,11 @@ impl AppDevice {
       connected_device: None,
       is_connecting: false,
       server: Arc::downgrade(server),
+      rssi_rx: discovered.rssi_rx,
+      rssi_notify: Some(discovered.rssi_notify),
+      rssi: None,
+      last_rssi_read: None,
+      // battery: None,
     }
   }
 
@@ -37,8 +48,8 @@ impl AppDevice {
     &self.name
   }
 
-  pub fn address(&self) -> Option<&str> {
-    self.address.as_deref()
+  pub fn address(&self) -> &str {
+    &self.address
   }
 
   pub fn pretty_name(&self) -> Option<&str> {
@@ -115,5 +126,33 @@ impl AppDevice {
       .map_err(|e| anyhow!("Error disconnecting '{}': {:?}", self.name, e))?;
 
     Ok(())
+  }
+
+  pub fn rssi(&self) -> Option<i8> {
+    self.rssi
+  }
+
+  pub async fn tick(&mut self) -> anyhow::Result<bool> {
+    let mut rssi_changed = false;
+    if let Some(rx) = &mut self.rssi_rx {
+      if rx.has_changed().unwrap_or(false) {
+        let new_rssi = *rx.borrow_and_update();
+        log::debug!("[{}] rssi_rx updated: {}", self.address, new_rssi);
+        self.rssi = Some(new_rssi);
+        rssi_changed = true;
+      }
+    }
+    let now = std::time::Instant::now();
+    if self.is_connected() {
+      if self.last_rssi_read.map_or(true, |t| now.duration_since(t) >= std::time::Duration::from_secs(3)) {
+        if let Some(notify) = &self.rssi_notify {
+          notify.notify_one();
+        } 
+        self.last_rssi_read = Some(now);
+      }
+    }
+
+    
+    Ok(rssi_changed)
   }
 }

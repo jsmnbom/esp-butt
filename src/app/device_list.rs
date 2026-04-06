@@ -106,8 +106,15 @@ impl App {
       let label = item.name();
       utils::draw::draw_text(screen, &MAIN_FONT, &label, Point::new(16, y))?;
 
-      if let Some(address) = item.address() {
-        utils::draw::draw_text(screen, &SMALL_FONT, address, Point::new(16, y + 10))?;
+      utils::draw::draw_text(screen, &SMALL_FONT, item.address(), Point::new(16, y + 10))?;
+
+      if let Some(rssi) = item.rssi().map(|r| r.to_string()) {
+        utils::draw::draw_text(
+          screen,
+          &SMALL_FONT,
+          &format!("{rssi}"),
+          Point::new(103, y + 10),
+        )?;
       }
     }
 

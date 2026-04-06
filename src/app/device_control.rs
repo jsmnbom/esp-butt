@@ -3,10 +3,7 @@ use buttplug_client::device::{
   ClientDeviceFeature,
   ClientDeviceOutputCommand,
 };
-use buttplug_core::{
-  message::OutputType,
-  util::range::RangeInclusive,
-};
+use buttplug_core::{message::OutputType, util::range::RangeInclusive};
 use embedded_graphics::prelude::Point;
 use litemap::LiteMap;
 
@@ -15,7 +12,6 @@ use crate::{
   hw,
   utils,
 };
-
 
 pub struct DeviceControlOutput {
   feature: ClientDeviceFeature,
@@ -38,18 +34,12 @@ impl std::fmt::Debug for DeviceControlOutput {
 
 #[derive(Debug)]
 pub struct DeviceControlState {
-  // /// Cached battery level (0–100), refreshed on each Tick
-  // pub battery: Option<u32>,
-  // /// Cached RSSI value, refreshed on each Tick
-  // pub rssi: Option<i8>,
   /// Slider index to output feature index mapping
   pub outputs: LiteMap<u8, DeviceControlOutput>,
 }
 
 impl App {
-  pub fn create_device_control(
-    &mut self,
-  ) -> anyhow::Result<DeviceControlState> {
+  pub fn create_device_control(&mut self) -> anyhow::Result<DeviceControlState> {
     let device = match self.current_device().and_then(|d| d.client_device()) {
       Some(d) => d,
       None => {
@@ -61,7 +51,10 @@ impl App {
     let mut outputs = LiteMap::new();
     // TODO: support multiple output features per device by mapping slider index → feature index, and adding a slider for each output feature. For now just take the first vibrate output feature we find.
     for (index, feature) in device.outputs(OutputType::Vibrate).iter().enumerate() {
-      let limits = feature.feature().get_output_limits(OutputType::Vibrate).unwrap();
+      let limits = feature
+        .feature()
+        .get_output_limits(OutputType::Vibrate)
+        .unwrap();
       outputs.insert(
         index as u8,
         DeviceControlOutput {
@@ -74,11 +67,7 @@ impl App {
       );
     }
 
-    Ok(DeviceControlState {
-      // battery: None,
-      // rssi: None,
-      outputs,
-    })
+    Ok(DeviceControlState { outputs })
   }
 
   pub async fn on_device_control_navigation(
@@ -146,11 +135,6 @@ impl App {
     }
   }
 
-  /// Periodic tick: poll battery and RSSI from the current device.
-  pub async fn on_device_control_tick(&mut self, _state: &mut DeviceControlState) {
-    // TODO
-  }
-
   // ── Drawing ──────────────────────────────────────────────────────────────
 
   pub fn draw_device_control(&mut self, state: &DeviceControlState) -> anyhow::Result<()> {
@@ -171,7 +155,7 @@ impl App {
       Point::new(0, 0),
     )?;
 
-    let address = app_device.address().unwrap_or("-");
+    let address = app_device.address();
     utils::draw::draw_text(
       screen,
       &SMALL_FONT,
@@ -196,11 +180,27 @@ impl App {
       )?;
     }
 
+    utils::draw::draw_text(
+      screen,
+      &SMALL_FONT,
+      &format!(
+        "RSSI: {}",
+        app_device
+          .rssi()
+          .map(|r| r.to_string())
+          .unwrap_or("-".to_string())
+      ),
+      Point::new(0, 48),
+    )?;
+
     Ok(())
   }
 
   pub fn draw_disconnecting(&mut self) -> anyhow::Result<()> {
-    let name = self.current_device().map(|d| d.name().to_string()).unwrap_or_else(|| "?".to_string());
+    let name = self
+      .current_device()
+      .map(|d| d.name().to_string())
+      .unwrap_or_else(|| "?".to_string());
     let screen = self.display.get_mut_canvas();
     utils::draw::draw_text(screen, &MAIN_FONT, &name, Point::new(0, 20))?;
     utils::draw::draw_text(screen, &SMALL_FONT, "Disconnecting...", Point::new(0, 36))?;
@@ -208,12 +208,7 @@ impl App {
   }
 }
 
-fn scale_slider_to_step(
-  slider_value: u16,
-  _step_count: u32,
-  step_min: i32,
-  step_max: i32,
-) -> i32 {
+fn scale_slider_to_step(slider_value: u16, _step_count: u32, step_min: i32, step_max: i32) -> i32 {
   let step_range = (step_max - step_min) as f64;
   let scaled_value =
     (slider_value as f64 / hw::SLIDER_MAX_VALUE as f64) * step_range + (step_min as f64);

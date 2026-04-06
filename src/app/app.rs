@@ -14,7 +14,10 @@ use crate::{
     device_control::DeviceControlState,
     device_list::DeviceListState,
   },
-  buttplug::{self, deferred::DiscoveredDevice},
+  buttplug::{
+    self,
+    backdoor::{ButtplugBackdoorEvent, DiscoveredDevice},
+  },
   hw,
   utils,
 };
@@ -43,14 +46,10 @@ pub struct App {
   pub(super) current_device_index: Option<usize>,
 
   tx: broadcast::Sender<AppEvent>,
-  input_event_stream: Option<Pin<Box<dyn Stream<Item = AppEvent> + Send>>>,
 }
 
 impl App {
-  pub fn new(
-    display: hw::Display,
-    input_event_stream: Pin<Box<dyn Stream<Item = AppEvent> + Send>>,
-  ) -> Self {
+  pub fn new(display: hw::Display) -> Self {
     let (tx, _) = broadcast::channel(16);
 
     App {
@@ -66,16 +65,19 @@ impl App {
       current_device_index: None,
 
       tx,
-      input_event_stream: Some(input_event_stream),
     }
   }
 
-  pub async fn main(mut self) -> anyhow::Result<()> {
+  pub async fn main(
+    mut self,
+
+    input_event_stream: Pin<Box<dyn Stream<Item = AppEvent> + Send>>,
+  ) -> anyhow::Result<()> {
     // Draw immediately so stale pixels from previous runs are cleared while
     // buttplug initialization and data loading are still in flight.
     self.draw().await?;
 
-    let (server, connector, discovery_stream) = buttplug::create_buttplug()?;
+    let (server, connector, backdoor_stream) = buttplug::create_buttplug()?;
     self.server = Some(server.clone());
 
     let client_stream = self
@@ -83,15 +85,14 @@ impl App {
       .event_stream()
       .map(|event| AppEvent::ButtplugEvent(event));
 
-    let discovery_stream = discovery_stream.map(|device| AppEvent::DeviceDiscovered(device));
     let self_stream = utils::stream::convert_broadcast_receiver_to_stream(self.tx.subscribe());
 
     let mut event_stream = Box::pin(
       (
         client_stream,
         self_stream,
-        self.input_event_stream.take().unwrap(),
-        discovery_stream,
+        input_event_stream,
+        backdoor_stream.map(AppEvent::BackdoorEvent),
       )
         .merge(),
     );
@@ -113,7 +114,7 @@ impl App {
           log::info!("Quit event received, exiting");
           return Ok(());
         }
-        AppEvent::DeviceDiscovered(device) => self.on_device_discovered(device),
+        AppEvent::BackdoorEvent(event) => self.on_backdoor_event(event).await,
       }
     }
 
@@ -178,28 +179,26 @@ impl App {
     self.queue_draw();
   }
 
+  async fn on_backdoor_event(&mut self, event: ButtplugBackdoorEvent) {
+    match event {
+      ButtplugBackdoorEvent::DeviceDiscovered(device) => {
+        log::info!("Backdoor event: Device discovered: {:?}", device);
+        self.on_device_discovered(device);
+      }
+    }
+  }
+
   fn on_device_discovered(&mut self, device: DiscoveredDevice) {
     let Some(server) = self.server.as_ref() else {
-      log::warn!("Received discovered device before server was initialized");
+      log::warn!("Received backdoor event before server was initialized");
       return;
     };
 
     let app_device = AppDevice::from_discovered(device, server);
-    // Replace existing entry if address matches first; otherwise fall back to name.
-    if let Some(existing) =
-      self
-        .devices
-        .iter_mut()
-        .find(|d| match (d.address(), app_device.address()) {
-          (Some(existing), Some(new)) => existing == new,
-          _ => false,
-        })
-    {
-      *existing = app_device;
-    } else if let Some(existing) = self
+    if let Some(existing) = self
       .devices
       .iter_mut()
-      .find(|d| d.name() == app_device.name())
+      .find(|d| d.address() == app_device.address())
     {
       *existing = app_device;
     } else {
@@ -326,14 +325,18 @@ impl App {
           self.ensure_device_list_scanning().await;
         }
       }
-      Some(AppState::DeviceControl(mut state)) => {
-        self.on_device_control_tick(&mut state).await;
-        if self.state.is_none() {
-          self.state = Some(AppState::DeviceControl(state));
-        }
-      }
       // otherwise just restore the state
       state => self.state = state,
+    }
+
+    let mut any_changed = false;
+    for device in self.devices.iter_mut() {
+      if device.tick().await.unwrap_or(false) {
+        any_changed = true;
+      }
+    }
+    if any_changed {
+      self.queue_draw();
     }
   }
 

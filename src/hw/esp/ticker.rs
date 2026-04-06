@@ -20,7 +20,7 @@ pub struct Ticker {
   arg_ptr: *mut TickerArg,
 }
 
-const TICK_INTERVAL_US: u64 = 60_000_000; // 60 seconds
+const TICK_INTERVAL_US: u64 = 1_000_000; // 1 second
 
 impl Ticker {
   pub fn new() -> anyhow::Result<Self> {

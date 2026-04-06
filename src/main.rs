@@ -51,9 +51,9 @@ fn main() -> anyhow::Result<()> {
 
   let input_event_stream = Box::pin((sliders.stream(), encoder.stream(), ticker.stream()).merge());
 
-  let app = app::App::new(display, input_event_stream);
+  let app = app::App::new(display);
 
-  esp_idf_svc::hal::task::block_on(async move { app.main().await })
+  esp_idf_svc::hal::task::block_on(async move { app.main(input_event_stream).await })
 }
 
 #[cfg(not(target_os = "espidf"))]
