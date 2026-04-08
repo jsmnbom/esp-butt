@@ -49,7 +49,7 @@ impl AsyncManager for EspAsyncManager {
         name = c"blehw";
         stack_size = 8 * 1024;
       }
-      Some("PingTimerDropper") => {
+      Some("PingTimerDrop") => {
         name = c"pingdrop";
         stack_size = 8 * 1024;
       }

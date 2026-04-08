@@ -11,14 +11,14 @@ use buttplug_server::device::hardware::{
     HardwareCommunicationManagerEvent,
   },
 };
-use tokio::sync::{Notify, mpsc, watch};
+#[cfg(target_os = "espidf")]
+use tokio::sync::watch;
+use tokio::sync::{Notify, mpsc};
 use tracing::info_span;
 
-use crate::{
-  buttplug::backdoor::{ButtplugBackdoorEvent, DiscoveredDevice},
-  utils,
-};
+use crate::buttplug::backdoor::{ButtplugBackdoorEvent, DiscoveredDevice};
 
+#[cfg(target_os = "espidf")]
 #[derive(Debug)]
 pub enum CustomHardwareCommunicationManagerEvent {
   DeviceFound {
@@ -31,18 +31,35 @@ pub enum CustomHardwareCommunicationManagerEvent {
   ScanningFinished,
 }
 
+#[cfg(target_os = "espidf")]
+type InnerManagerEvent = CustomHardwareCommunicationManagerEvent;
+#[cfg(not(target_os = "espidf"))]
+type InnerManagerEvent = HardwareCommunicationManagerEvent;
+
 pub trait CustomHardwareCommunicationManagerBuilder: Send {
   fn finish(
     &mut self,
-    sender: mpsc::Sender<CustomHardwareCommunicationManagerEvent>,
+    sender: mpsc::Sender<InnerManagerEvent>,
   ) -> Box<dyn HardwareCommunicationManager>;
+}
+
+#[cfg(not(target_os = "espidf"))]
+impl<T: HardwareCommunicationManagerBuilder> CustomHardwareCommunicationManagerBuilder for T {
+  fn finish(
+    &mut self,
+    sender: mpsc::Sender<HardwareCommunicationManagerEvent>,
+  ) -> Box<dyn HardwareCommunicationManager> {
+    HardwareCommunicationManagerBuilder::finish(self, sender)
+  }
 }
 
 struct DeferredHardwareConnector {
   inner: Box<dyn HardwareConnector + Send>,
   name: String,
   address: String,
+  #[cfg(target_os = "espidf")]
   rssi_rx: Option<watch::Receiver<i8>>,
+  #[cfg(target_os = "espidf")]
   rssi_notify: std::sync::Arc<tokio::sync::Notify>,
   backdoor_tx: mpsc::Sender<ButtplugBackdoorEvent>,
 }
@@ -64,11 +81,18 @@ impl HardwareConnector for DeferredHardwareConnector {
 
   async fn connect(&mut self) -> Result<Box<dyn HardwareSpecializer>, ButtplugDeviceError> {
     let approve = Arc::new(Notify::new());
+
+    #[cfg(target_os = "espidf")]
+    let (rssi_rx, rssi_notify) = (self.rssi_rx.clone(), self.rssi_notify.clone());
+
+    #[cfg(not(target_os = "espidf"))]
+    let (rssi_rx, rssi_notify) = (None, Arc::new(Notify::new()));
+
     let discovered = DiscoveredDevice {
       name: self.name.clone(),
       address: self.address.clone(),
-      rssi_rx: self.rssi_rx.take(),
-      rssi_notify: self.rssi_notify.clone(),
+      rssi_rx,
+      rssi_notify,
       approve: approve.clone(),
     };
 
@@ -110,8 +134,7 @@ impl<I: CustomHardwareCommunicationManagerBuilder> HardwareCommunicationManagerB
     &mut self,
     sender: tokio::sync::mpsc::Sender<HardwareCommunicationManagerEvent>,
   ) -> Box<dyn HardwareCommunicationManager> {
-    let (wrapper_tx, mut wrapper_rx) =
-      tokio::sync::mpsc::channel::<CustomHardwareCommunicationManagerEvent>(64);
+    let (wrapper_tx, mut wrapper_rx) = tokio::sync::mpsc::channel::<InnerManagerEvent>(64);
 
     let backdoor_tx = self.backdoor_tx.clone();
 
@@ -119,28 +142,41 @@ impl<I: CustomHardwareCommunicationManagerBuilder> HardwareCommunicationManagerB
       async move {
         while let Some(event) = wrapper_rx.recv().await {
           let forwarded = match event {
-            CustomHardwareCommunicationManagerEvent::DeviceFound {
+            #[cfg(target_os = "espidf")]
+            InnerManagerEvent::DeviceFound {
               name,
               address,
               rssi_rx,
               rssi_notify,
               creator,
-            } => {
-              // Wrap the creator in a DeferredHardwareConnector
-              HardwareCommunicationManagerEvent::DeviceFound {
-                name: name.clone(),
-                address: address.clone(),
-                creator: Box::new(DeferredHardwareConnector {
-                  inner: creator,
-                  name,
-                  address,
-                  rssi_rx,
-                  rssi_notify,
-                  backdoor_tx: backdoor_tx.clone(),
-                }),
-              }
-            }
-            CustomHardwareCommunicationManagerEvent::ScanningFinished => {
+            } => HardwareCommunicationManagerEvent::DeviceFound {
+              name: name.clone(),
+              address: address.clone(),
+              creator: Box::new(DeferredHardwareConnector {
+                inner: creator,
+                name,
+                address,
+                rssi_rx,
+                rssi_notify,
+                backdoor_tx: backdoor_tx.clone(),
+              }),
+            },
+            #[cfg(not(target_os = "espidf"))]
+            InnerManagerEvent::DeviceFound {
+              name,
+              address,
+              creator,
+            } => HardwareCommunicationManagerEvent::DeviceFound {
+              name: name.clone(),
+              address: extract_mac_from_btleplug_address(&address),
+              creator: Box::new(DeferredHardwareConnector {
+                inner: creator,
+                name,
+                address: extract_mac_from_btleplug_address(&address),
+                backdoor_tx: backdoor_tx.clone(),
+              }),
+            },
+            InnerManagerEvent::ScanningFinished => {
               HardwareCommunicationManagerEvent::ScanningFinished
             }
           };
@@ -154,4 +190,15 @@ impl<I: CustomHardwareCommunicationManagerBuilder> HardwareCommunicationManagerB
 
     self.inner.finish(wrapper_tx)
   }
+}
+
+#[cfg(not(target_os = "espidf"))]
+fn extract_mac_from_btleplug_address(address: &str) -> String {
+  use regex_lite::Regex;
+  // PeripheralId(DeviceId { object_path: Path(\"/org/bluez/hci0/dev_E2_36_8E_D4_BA_71\\0\") }) -> E2:36:8E:D4:BA:71
+  let re = Regex::new(r"([0-9A-F]{2}_[0-9A-F]{2}_[0-9A-F]{2}_[0-9A-F]{2}_[0-9A-F]{2}_[0-9A-F]{2})")
+    .unwrap();
+  re.captures(address)
+    .and_then(|caps| caps.get(1).map(|m| m.as_str().replace('_', ":")))
+    .unwrap_or_else(|| address.to_string())
 }

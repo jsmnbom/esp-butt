@@ -4,17 +4,18 @@ use buttplug_client::device::{
   ClientDeviceOutputCommand,
 };
 use buttplug_core::{message::OutputType, util::range::RangeInclusive};
-use embedded_graphics::prelude::Point;
 use litemap::LiteMap;
 
 use crate::{
-  app::{App, MAIN_FONT, NavigationEvent, SMALL_FONT, SliderEvent},
+  app::{App, AppDevice, MAIN_FONT, NavigationEvent, SMALL_FONT, SliderEvent},
   hw,
-  utils,
+  img,
+  utils::draw::*,
 };
 
 pub struct DeviceControlOutput {
   feature: ClientDeviceFeature,
+  output_type: OutputType,
   step_count: u32,
   step_limit: RangeInclusive<i32>,
   value: u16,
@@ -24,6 +25,7 @@ pub struct DeviceControlOutput {
 impl std::fmt::Debug for DeviceControlOutput {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("DeviceControlOutput")
+      .field("output_type", &self.output_type)
       .field("step_count", &self.step_count)
       .field("step_limit", &self.step_limit)
       .field("value", &self.value)
@@ -32,44 +34,59 @@ impl std::fmt::Debug for DeviceControlOutput {
   }
 }
 
+// The output types we support controlling from the device control screen, but also the priority we grab them in, in case a feature supports multiple output types.
+// Whether any devices are supported set up in such a way i do not know :P
+const SUPPORTED_OUTPUT_TYPES: [OutputType; 8] = [
+  OutputType::Vibrate,
+  OutputType::Rotate,
+  OutputType::Oscillate,
+  OutputType::Constrict,
+  OutputType::Temperature,
+  OutputType::Led,
+  OutputType::Position,
+  OutputType::Spray,
+];
+
 #[derive(Debug)]
 pub struct DeviceControlState {
   /// Slider index to output feature index mapping
   pub outputs: LiteMap<u8, DeviceControlOutput>,
 }
 
-impl App {
-  pub fn create_device_control(&mut self) -> anyhow::Result<DeviceControlState> {
-    let device = match self.current_device().and_then(|d| d.client_device()) {
-      Some(d) => d,
-      None => {
-        log::warn!("goto_device_control: no current device");
-        return Err(anyhow::anyhow!("No current device"));
-      }
-    };
+impl DeviceControlState {
+  pub fn new(app_device: &AppDevice) -> Self {
+    let device = app_device
+      .client_device()
+      .expect("DeviceControlState::new called without a client device");
 
     let mut outputs = LiteMap::new();
-    // TODO: support multiple output features per device by mapping slider index → feature index, and adding a slider for each output feature. For now just take the first vibrate output feature we find.
-    for (index, feature) in device.outputs(OutputType::Vibrate).iter().enumerate() {
-      let limits = feature
-        .feature()
-        .get_output_limits(OutputType::Vibrate)
-        .unwrap();
-      outputs.insert(
-        index as u8,
-        DeviceControlOutput {
-          feature: feature.clone(),
-          step_count: limits.step_count(),
-          step_limit: limits.step_limit().clone(),
-          value: 0,
-          step: 0,
-        },
-      );
+
+    let mut output_index = 0;
+
+    for feature in device.device_features().values() {
+      for output_type in SUPPORTED_OUTPUT_TYPES {
+        if let Some(limits) = feature.feature().get_output_limits(output_type) {
+          outputs.insert(
+            output_index,
+            DeviceControlOutput {
+              feature: feature.clone(),
+              output_type,
+              step_count: limits.step_count(),
+              step_limit: limits.step_limit().clone(),
+              value: 0,
+              step: 0,
+            },
+          );
+          output_index += 1;
+          break; // Only grab the highest priority output type for each feature
+        }
+      }
     }
-
-    Ok(DeviceControlState { outputs })
+    Self { outputs }
   }
+}
 
+impl App {
   pub async fn on_device_control_navigation(
     &mut self,
     _state: &mut DeviceControlState,
@@ -84,14 +101,12 @@ impl App {
             if let Err(e) = device.disconnect().await {
               log::warn!("Error disconnecting device: {:?}", e);
               self.current_device_index = None;
-              self.goto_device_list();
-              self.ensure_device_list_scanning().await;
+              self.goto_device_list().await;
             }
             // On success, DeviceRemoved event will transition to device list
           }
         } else {
-          self.goto_device_list();
-          self.ensure_device_list_scanning().await;
+          self.goto_device_list().await;
         }
       }
     }
@@ -114,17 +129,11 @@ impl App {
             output.step_limit.start(),
             output.step_limit.end(),
           );
-          log::info!(
-            "Slider {} changed: value={}, step_count={}, step_limit={}..={}, step={}",
-            slider_index,
-            output.value,
-            output.step_count,
-            output.step_limit.start(),
-            output.step_limit.end(),
-            output.step
-          );
-          let cmd =
-            ClientDeviceOutputCommand::Vibrate(ClientDeviceCommandValue::Steps(output.step));
+          let cmd = ClientDeviceOutputCommand::from_command_value(
+            output.output_type,
+            &ClientDeviceCommandValue::Steps(output.step),
+          )
+          .unwrap();
           match output.feature.run_output(&cmd).await {
             Ok(_) => log::info!("Sent command for slider {}", slider_index),
             Err(e) => log::error!("Error sending command for slider {}: {:?}", slider_index, e),
@@ -148,50 +157,40 @@ impl App {
 
     let screen = self.display.get_mut_canvas();
 
-    utils::draw::draw_text(
-      screen,
-      &MAIN_FONT,
-      &format!("Name: {}", app_device.name()),
-      Point::new(0, 0),
-    )?;
+    ControllerBattery {
+      point: Point::new(0, 0),
+      level: self.self_battery,
+    }
+    .draw(screen)?;
 
-    let address = app_device.address();
-    utils::draw::draw_text(
-      screen,
-      &SMALL_FONT,
-      &format!("Addr: {}", address),
-      Point::new(0, 12),
-    )?;
-
-    let pretty_name = app_device.pretty_name().unwrap_or("-");
-    utils::draw::draw_text(
-      screen,
-      &SMALL_FONT,
-      &format!("Pretty: {}", pretty_name),
-      Point::new(0, 20),
-    )?;
-
-    for (line, (_, output)) in state.outputs.iter().take(2).enumerate() {
-      utils::draw::draw_text(
-        screen,
-        &SMALL_FONT,
-        &format!("S{}: {} ({})", line + 1, output.value, output.step),
-        Point::new(0, 32 + (line as i32 * 8)),
-      )?;
+    Text::new(app_device.name(), Point::new(0, 6), &MAIN_FONT).draw(screen)?;
+    Text::new(app_device.address(), Point::new(0, 16), &SMALL_FONT).draw(screen)?;
+    if let Some(pretty) = app_device.pretty_name() {
+      Text::new(pretty, Point::new(0, 24), &SMALL_FONT).draw(screen)?;
     }
 
-    utils::draw::draw_text(
-      screen,
-      &SMALL_FONT,
-      &format!(
-        "RSSI: {}",
-        app_device
-          .rssi()
-          .map(|r| r.to_string())
-          .unwrap_or("-".to_string())
-      ),
-      Point::new(0, 48),
-    )?;
+    if let Some(rssi) = app_device.rssi() {
+      SignalStrengthBar {
+        point: Point::new(10, 40),
+        rssi,
+      }
+      .draw(screen)?;
+    }
+    if let Some(battery) = app_device.battery() {
+      DeviceBattery {
+        point: Point::new(40, 46),
+        level: battery as u8,
+      }
+      .draw(screen)?;
+    }
+
+    let start_x = if state.outputs.len() > 1 { 84 } else { 84 + 24 };
+
+    for (i, (_, output)) in state.outputs.iter().take(2).enumerate() {
+      let x = start_x + (i as i32 * 24);
+
+      OutputSlider::new(x, output).draw(screen)?;
+    }
 
     Ok(())
   }
@@ -202,9 +201,23 @@ impl App {
       .map(|d| d.name().to_string())
       .unwrap_or_else(|| "?".to_string());
     let screen = self.display.get_mut_canvas();
-    utils::draw::draw_text(screen, &MAIN_FONT, &name, Point::new(0, 20))?;
-    utils::draw::draw_text(screen, &SMALL_FONT, "Disconnecting...", Point::new(0, 36))?;
+    Text::new(&name, Point::new(0, 20), &MAIN_FONT).draw(screen)?;
+    Text::new("Disconnecting...", Point::new(0, 36), &SMALL_FONT).draw(screen)?;
     Ok(())
+  }
+}
+
+fn icon_for_output_type(output_type: OutputType) -> &'static ImageRaw<'static, BinaryColor> {
+  match output_type {
+    OutputType::Vibrate => &img::ICON_VIBRATE,
+    OutputType::Rotate => &img::ICON_ROTATE,
+    OutputType::Oscillate => &img::ICON_OSCILLATE,
+    OutputType::Constrict => &img::ICON_CONSTRICT,
+    OutputType::Temperature => &img::ICON_TEMPERATURE,
+    OutputType::Led => &img::ICON_LED,
+    OutputType::Position => &img::ICON_POSITION,
+    OutputType::HwPositionWithDuration => &img::ICON_HW_POSITION_WITH_DURATION,
+    OutputType::Spray => &img::ICON_SPRAY,
   }
 }
 
@@ -213,4 +226,81 @@ fn scale_slider_to_step(slider_value: u16, _step_count: u32, step_min: i32, step
   let scaled_value =
     (slider_value as f64 / hw::SLIDER_MAX_VALUE as f64) * step_range + (step_min as f64);
   scaled_value.round() as i32
+}
+
+struct OutputSlider<'a> {
+  x: i32,
+  output: &'a DeviceControlOutput,
+}
+
+impl OutputSlider<'_> {
+  fn new<'a>(x: i32, output: &'a DeviceControlOutput) -> OutputSlider<'a> {
+    OutputSlider { x, output }
+  }
+}
+
+impl<'a> Drawable for OutputSlider<'a> {
+  type Color = BinaryColor;
+  type Output = ();
+
+  fn draw<D>(&self, target: &mut D) -> Result<Self::Output, D::Error>
+  where
+    D: DrawTarget<Color = Self::Color>,
+  {
+    RoundedRectangle::new(
+      Rectangle::new(Point::new(self.x + 4, 51), Size::new(13, 13)),
+      CornerRadiiBuilder::new().all(Size::new(2, 2)).build(),
+    )
+    .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
+    .draw(target)?;
+    Image::new(
+      icon_for_output_type(self.output.output_type),
+      Point::new(self.x + 6, 53),
+    )
+    .draw(target)?;
+
+    RoundedRectangle::new(
+      Rectangle::new(Point::new(self.x + 13, 0), Size::new(4, 50)),
+      CornerRadiiBuilder::new().all(Size::new(2, 2)).build(),
+    )
+    .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
+    .draw(target)?;
+
+    Text::new("0", Point::new(self.x + 7, 44), &SMALL_FONT)
+      .align(HorizontalAlignment::Right)
+      .draw(target)?;
+
+    Line::new(Point::new(self.x + 8, 47), Point::new(self.x + 10, 47))
+      .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
+      .draw(target)?;
+
+    Text::new(
+      &format!("{}", self.output.step_count),
+      Point::new(self.x + 7, 0),
+      &SMALL_FONT,
+    )
+    .align(HorizontalAlignment::Right)
+    .draw(target)?;
+
+    Line::new(Point::new(self.x + 8, 3), Point::new(self.x + 10, 3))
+      .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
+      .draw(target)?;
+
+    RoundedRectangle::new(
+      Rectangle::new(Point::new(self.x, 22), Size::new(11, 9)),
+      CornerRadiiBuilder::new().all(Size::new(2, 2)).build(),
+    )
+    .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
+    .draw(target)?;
+
+    Text::new(
+      &format!("{}", self.output.step),
+      Point::new(self.x + 9, 23),
+      &SMALL_FONT,
+    )
+    .align(HorizontalAlignment::Right)
+    .draw(target)?;
+
+    Ok(())
+  }
 }

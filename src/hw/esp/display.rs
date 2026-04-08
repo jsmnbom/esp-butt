@@ -4,14 +4,6 @@ use esp_idf_svc::hal::gpio::{InputPin, OutputPin};
 use esp_idf_svc::hal::i2c::{I2c, I2cConfig, I2cDriver};
 use esp_idf_svc::hal::units::*;
 use mini_oled::prelude::*;
-use mini_oled::screen::canvas::Canvas;
-
-const WIDTH: u32 = 128;
-const HEIGHT: u32 = 64;
-const OFFSET: u8 = 2;
-const BUFFER_SIZE: usize = WIDTH as usize * HEIGHT as usize / 8;
-
-pub type DisplayCanvas = Canvas<BUFFER_SIZE, WIDTH, HEIGHT, OFFSET>;
 
 pub struct Display(Box<Sh1106<I2cInterface<I2cDriver<'static>>>>);
 

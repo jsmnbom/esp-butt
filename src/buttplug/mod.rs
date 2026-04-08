@@ -23,6 +23,11 @@ pub mod deferred;
 #[cfg(target_os = "espidf")]
 mod hwmgr;
 
+#[cfg(target_os = "espidf")]
+type CommManagerBuilder = hwmgr::BleCommunicationManagerBuilder;
+#[cfg(not(target_os = "espidf"))]
+type CommManagerBuilder = buttplug_server_hwmgr_btleplug::BtlePlugCommunicationManagerBuilder;
+
 pub fn init() {
   log::info!("Initializing buttplug.io async manager...");
   buttplug_core::util::async_manager::set_global_async_manager(
@@ -42,15 +47,8 @@ pub fn create_buttplug() -> anyhow::Result<(
 
   let (backdoor_tx, backdoor_rx) = mpsc::channel(16);
 
-  #[cfg(target_os = "espidf")]
   device_manager_builder.comm_manager(deferred::DeferredCommunicationManagerBuilder::new(
-    hwmgr::BleCommunicationManagerBuilder::default(),
-    backdoor_tx.clone(),
-  ));
-
-  #[cfg(not(target_os = "espidf"))]
-  device_manager_builder.comm_manager(deferred::DeferredCommunicationManagerBuilder::new(
-    buttplug_server_hwmgr_btleplug::BtlePlugCommunicationManagerBuilder::default(),
+    CommManagerBuilder::default(),
     backdoor_tx.clone(),
   ));
 

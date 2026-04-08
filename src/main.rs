@@ -36,9 +36,10 @@ fn main() -> anyhow::Result<()> {
     peripherals.pins.gpio6,
   )?;
 
-  let sliders = hw::Sliders::new(
+  let adc = hw::AdcInputs::new(
     peripherals.adc1,
     (peripherals.pins.gpio1, peripherals.pins.gpio2),
+    peripherals.pins.gpio3,
   )?;
 
   let encoder = hw::Encoder::new(
@@ -49,9 +50,9 @@ fn main() -> anyhow::Result<()> {
 
   let ticker = hw::Ticker::new()?;
 
-  let input_event_stream = Box::pin((sliders.stream(), encoder.stream(), ticker.stream()).merge());
+  let input_event_stream = Box::pin((adc.stream(), encoder.stream(), ticker.stream()).merge());
 
-  let app = app::App::new(display);
+  let app = app::App::new(display, adc);
 
   esp_idf_svc::hal::task::block_on(async move { app.main(input_event_stream).await })
 }
@@ -88,7 +89,7 @@ async fn main() -> anyhow::Result<()> {
     input_stream,
   } = hw::HardwareMock::new()?;
 
-  let app = app::App::new(display, input_stream);
+  let app = app::App::new(display);
 
-  app.main().await
+  app.main(input_stream).await
 }

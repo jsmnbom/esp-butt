@@ -12,6 +12,7 @@ pub use task_info::TaskInfo;
 #[cfg(not(target_os = "espidf"))]
 pub use task_mock::{sleep, sleep_timer_async, spawn};
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 pub enum Core {
   Pro,

@@ -33,6 +33,8 @@ pub enum AppState {
 
 pub struct App {
   pub(super) display: hw::Display,
+  #[cfg(target_os = "espidf")]
+  pub(super) adc: hw::AdcInputs,
   pub(super) server: Option<Arc<buttplug_server::ButtplugServer>>,
   pub(super) client: buttplug_client::ButtplugClient,
   pub(super) boot_loading: bool,
@@ -45,15 +47,23 @@ pub struct App {
   /// Index into `devices` for the device currently being controlled.
   pub(super) current_device_index: Option<usize>,
 
+  /// Controller's own battery level (0–100). Updated on every Tick from ADC.
+  pub(super) self_battery: u8,
+
   tx: broadcast::Sender<AppEvent>,
 }
 
 impl App {
-  pub fn new(display: hw::Display) -> Self {
+  pub fn new(
+    display: hw::Display,
+    #[cfg(target_os = "espidf")] adc: hw::AdcInputs,
+  ) -> Self {
     let (tx, _) = broadcast::channel(16);
 
     App {
       display,
+      #[cfg(target_os = "espidf")]
+      adc,
       server: None,
       client: buttplug_client::ButtplugClient::new("esp"),
       boot_loading: true,
@@ -63,6 +73,8 @@ impl App {
 
       devices: Vec::new(),
       current_device_index: None,
+
+      self_battery: 0,
 
       tx,
     }
@@ -127,36 +139,28 @@ impl App {
     }
   }
 
+  fn set_state(&mut self, new_state: AppState) {
+    log::debug!("Transitioning to state: {:?}", new_state);
+    self.state = Some(new_state);
+    self.queue_draw();
+  }
+
   pub(super) fn goto_idle(&mut self) {
     self.set_state(AppState::Idle);
   }
 
-  pub(super) fn goto_device_list(&mut self) {
-    self.set_state(AppState::DeviceList(DeviceListState {
-      cursor: 0,
-      last_activity: std::time::Instant::now(),
-    }));
-  }
-
-  pub(super) async fn ensure_device_list_scanning(&mut self) {
-    if !matches!(self.state, Some(AppState::DeviceList(_))) || self.scanning {
-      return;
-    }
-
-    match self.client.start_scanning().await {
-      Ok(_) => {
-        self.scanning = true;
-        self.queue_draw();
-      }
-      Err(e) => log::error!("Error ensuring scan is active on device list: {:?}", e),
-    }
+  pub(super) async fn goto_device_list(&mut self) {
+    self.set_state(AppState::DeviceList(DeviceListState::default()));
+    self.ensure_scanning().await;
   }
 
   pub(super) fn goto_device_control(&mut self) {
-    match self.create_device_control() {
-      Ok(state) => self.set_state(AppState::DeviceControl(state)),
-      Err(e) => log::error!("Error creating device control state: {:?}", e),
-    }
+    match self.current_device() {
+      Some(d) => self.set_state(AppState::DeviceControl(DeviceControlState::new(d))),
+      None => {
+        log::error!("goto_device_control: no current device");
+      }
+    };
   }
 
   pub(super) fn goto_disconnecting(&mut self) {
@@ -167,16 +171,25 @@ impl App {
     self.set_state(AppState::Connecting);
   }
 
+  pub(super) async fn ensure_scanning(&mut self) {
+    if self.scanning {
+      return;
+    }
+
+    match self.client.start_scanning().await {
+      Ok(_) => {
+        log::info!("Started scanning");
+        self.scanning = true;
+        self.queue_draw();
+      }
+      Err(e) => log::error!("Error ensuring scan is active: {:?}", e),
+    }
+  }
+
   pub(super) fn current_device(&self) -> Option<&AppDevice> {
     self
       .current_device_index
       .and_then(|index| self.devices.get(index))
-  }
-
-  fn set_state(&mut self, new_state: AppState) {
-    log::debug!("Transitioning to state: {:?}", new_state);
-    self.state = Some(new_state);
-    self.queue_draw();
   }
 
   async fn on_backdoor_event(&mut self, event: ButtplugBackdoorEvent) {
@@ -249,8 +262,7 @@ impl App {
                 Some(AppState::DeviceControl(_)) | Some(AppState::Disconnecting { .. })
               ) {
                 log::info!("Current device removed, returning to device list");
-                self.goto_device_list();
-                self.ensure_device_list_scanning().await;
+                self.goto_device_list().await;
               }
             }
             _ => {}
@@ -264,7 +276,6 @@ impl App {
       ButtplugClientEvent::ScanningFinished => {
         log::info!("Buttplug scanning finished");
         self.scanning = false;
-        self.ensure_device_list_scanning().await;
         self.queue_draw();
       }
       _ => {}
@@ -276,8 +287,7 @@ impl App {
       None => unreachable!("state is None during on_navigation"),
       Some(AppState::Idle) => {
         self.state = Some(AppState::Idle);
-        self.on_idle_navigation(nav_event);
-        self.ensure_device_list_scanning().await;
+        self.on_idle_navigation(nav_event).await;
       }
       Some(AppState::DeviceList(mut state)) => {
         self.on_device_list_navigation(&mut state, nav_event).await;
@@ -316,13 +326,10 @@ impl App {
 
   async fn on_tick(&mut self) {
     match self.state.take() {
-      Some(AppState::DeviceList(state)) => {
-        if state.last_activity.elapsed() >= std::time::Duration::from_secs(60) {
-          log::info!("Device list idle timeout, returning to idle");
-          self.goto_idle();
-        } else {
+      Some(AppState::DeviceList(mut state)) => {
+        self.on_device_list_tick(&mut state).await;
+        if self.state.is_none() {
           self.state = Some(AppState::DeviceList(state));
-          self.ensure_device_list_scanning().await;
         }
       }
       // otherwise just restore the state
@@ -335,6 +342,21 @@ impl App {
         any_changed = true;
       }
     }
+
+    #[cfg(target_os = "espidf")]
+    {
+      let raw = self.adc.battery_raw();
+      // V_BAT_mV ≈ raw * 6200 / 4095  (db12 full-scale ~3100 mV, ×2 voltage divider)
+      let v_bat_mv = raw as u32 * 6200 / 4095;
+      // LiPo: 3000 mV (0%) – 4200 mV (100%)
+      let pct = ((v_bat_mv.saturating_sub(3000)) * 100 / 1200).min(100) as u8;
+      if pct != self.self_battery {
+        log::debug!("Battery: raw={} v_bat={}mV pct={}%", raw, v_bat_mv, pct);
+        self.self_battery = pct;
+        any_changed = true;
+      }
+    }
+
     if any_changed {
       self.queue_draw();
     }

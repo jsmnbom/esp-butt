@@ -1,9 +1,10 @@
+mod adc;
 mod display;
 mod encoder;
-mod slider;
 mod ticker;
 
-pub use display::{Display, DisplayCanvas};
+pub use adc::{AdcInputs, SLIDER_MAX_VALUE};
+pub use display::Display;
 pub use encoder::Encoder;
 use esp_idf_svc::{
   hal::{
@@ -12,7 +13,6 @@ use esp_idf_svc::{
   },
   sys::{self, EspError, esp},
 };
-pub use slider::{SLIDER_MAX_VALUE, Sliders};
 pub use ticker::Ticker;
 
 pub fn init() -> Result<(), EspError> {
