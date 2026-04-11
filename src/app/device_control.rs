@@ -4,6 +4,7 @@ use buttplug_client::device::{
   ClientDeviceOutputCommand,
 };
 use buttplug_core::{message::OutputType, util::range::RangeInclusive};
+use futures_concurrency::future::Race;
 use litemap::LiteMap;
 
 use crate::{
@@ -20,6 +21,7 @@ pub struct DeviceControlOutput {
   step_limit: RangeInclusive<i32>,
   value: u16,
   step: i32,
+  last_sent_step: Option<i32>,
 }
 
 impl std::fmt::Debug for DeviceControlOutput {
@@ -75,6 +77,7 @@ impl DeviceControlState {
               step_limit: limits.step_limit().clone(),
               value: 0,
               step: 0,
+              last_sent_step: None,
             },
           );
           output_index += 1;
@@ -129,14 +132,38 @@ impl App {
             output.step_limit.start(),
             output.step_limit.end(),
           );
+          if output.last_sent_step == Some(output.step) {
+            self.queue_draw();
+            return;
+          }
           let cmd = ClientDeviceOutputCommand::from_command_value(
             output.output_type,
             &ClientDeviceCommandValue::Steps(output.step),
           )
           .unwrap();
-          match output.feature.run_output(&cmd).await {
-            Ok(_) => log::info!("Sent command for slider {}", slider_index),
-            Err(e) => log::error!("Error sending command for slider {}: {:?}", slider_index, e),
+          log::debug!(target: "slider", "sending command for slider {}", slider_index);
+          let send_result = (
+            async { Some(output.feature.run_output(&cmd).await) },
+            async {
+              crate::utils::task::sleep_timer_async(core::time::Duration::from_millis(500)).await;
+              None
+            },
+          )
+            .race()
+            .await;
+          log::debug!(target: "slider", "command finished for slider {}", slider_index);
+          match send_result {
+            Some(Ok(_)) => {
+              output.last_sent_step = Some(output.step);
+              log::info!("Sent command for slider {}", slider_index);
+            }
+            Some(Err(e)) => {
+              log::error!("Error sending command for slider {}: {:?}", slider_index, e)
+            }
+            None => log::warn!(
+              "Timeout sending command for slider {}, main loop unblocked",
+              slider_index
+            ),
           }
           self.queue_draw();
         }

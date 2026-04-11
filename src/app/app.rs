@@ -58,7 +58,7 @@ impl App {
     display: hw::Display,
     #[cfg(target_os = "espidf")] adc: hw::AdcInputs,
   ) -> Self {
-    let (tx, _) = broadcast::channel(16);
+    let (tx, _) = broadcast::channel(64);
 
     App {
       display,
@@ -115,7 +115,7 @@ impl App {
     self.queue_draw();
 
     while let Some(event) = event_stream.next().await {
-      log::info!(target: "app_events", "{event:?}");
+      log::info!(target: "app_events", "{event}");
       match event {
         AppEvent::ButtplugEvent(ref event) => self.on_buttplug_event(event).await,
         AppEvent::Navigation(ref nav_event) => self.on_navigation(nav_event).await,
@@ -195,7 +195,6 @@ impl App {
   async fn on_backdoor_event(&mut self, event: ButtplugBackdoorEvent) {
     match event {
       ButtplugBackdoorEvent::DeviceDiscovered(device) => {
-        log::info!("Backdoor event: Device discovered: {:?}", device);
         self.on_device_discovered(device);
       }
     }

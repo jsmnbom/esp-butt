@@ -24,7 +24,7 @@ const TICK_INTERVAL_US: u64 = 1_000_000; // 1 second
 
 impl Ticker {
   pub fn new() -> anyhow::Result<Self> {
-    let (tx, _) = broadcast::channel(4);
+    let (tx, _) = broadcast::channel(16);
 
     let arg = Box::into_raw(Box::new(TickerArg { tx: tx.clone() }));
 

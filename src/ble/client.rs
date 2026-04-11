@@ -81,17 +81,16 @@ impl From<sys::ble_gap_conn_params> for ConnectionParameters {
 
 impl Default for ConnectionParameters {
   fn default() -> Self {
-    sys::ble_gap_conn_params {
-      scan_itvl: sys::BLE_HCI_SCAN_ITVL_DEF as u16,
-      scan_window: sys::BLE_HCI_SCAN_WINDOW_DEF as u16,
-      itvl_min: 24, // 30ms
-      itvl_max: 40, // 50ms
-      latency: sys::BLE_GAP_INITIAL_CONN_LATENCY as u16,
-      supervision_timeout: sys::BLE_GAP_INITIAL_SUPERVISION_TIMEOUT as u16,
-      min_ce_len: sys::BLE_GAP_INITIAL_CONN_MIN_CE_LEN as u16,
-      max_ce_len: sys::BLE_GAP_INITIAL_CONN_MAX_CE_LEN as u16,
+    Self {
+      scan_interval: core::time::Duration::from_millis(100),
+      scan_window: core::time::Duration::from_millis(50),
+      interval_min: core::time::Duration::from_millis(15),
+      interval_max: core::time::Duration::from_millis(30),
+      latency: 0,
+      supervision_timeout: core::time::Duration::from_millis(2500),
+      event_len_min: core::time::Duration::from_millis(5),
+      event_len_max: core::time::Duration::from_millis(100),
     }
-    .into()
   }
 }
 
@@ -131,7 +130,7 @@ impl ClientConnector {
     }
 
     let own_addr_type = utils::get_own_address_type()?;
-    let (tx, mut rx) = broadcast::channel(16);
+    let (tx, mut rx) = broadcast::channel(64);
 
     let state = Box::new(ClientState {
       connected: AtomicBool::new(false),
@@ -140,12 +139,18 @@ impl ClientConnector {
     });
     let state_ptr = state.as_ref() as *const _ as *mut c_void;
 
+    log::info!("Initiating connection to {:?} with params: {:?}", self.address, self.conn_params);
+
+    let raw_params: sys::ble_gap_conn_params = self.conn_params.into();
     unsafe {
-      esp!(sys::ble_gap_connect(
+      esp!(sys::ble_gap_ext_connect(
         own_addr_type,
         &self.address.into(),
         self.connect_timeout.as_millis() as i32,
-        &self.conn_params.into(),
+        (sys::BLE_GAP_LE_PHY_1M_MASK | sys::BLE_GAP_LE_PHY_CODED_MASK) as u8,
+        &raw_params,
+        &raw_params,
+        &raw_params,
         Some(on_gap_event),
         state_ptr,
       ))?;
@@ -274,8 +279,21 @@ extern "C" fn on_gap_event(event: *mut sys::ble_gap_event, arg: *mut c_void) -> 
         let _ = state.tx.send(Err(BleError::ConnectionFailed));
       }
     }
-    GapEvent::LinkEstablished { .. } => {
-      log::info!("Link established");
+    GapEvent::LinkEstablished { status, conn_handle } => {
+      log::info!("Link established (handle {})", conn_handle);
+      if status == 0 {
+        let rc = unsafe {
+          sys::ble_gap_set_prefered_le_phy(
+            conn_handle,
+            sys::BLE_GAP_LE_PHY_CODED_MASK as u8,
+            sys::BLE_GAP_LE_PHY_CODED_MASK as u8,
+            sys::BLE_GAP_LE_PHY_CODED_S8 as u16,
+          )
+        };
+        if rc != 0 {
+          log::warn!("Failed to request S=8 coding on conn {}: {}", conn_handle, rc);
+        }
+      }
     }
     GapEvent::Mtu { mtu, .. } => {
       log::info!("MTU exchanged: {}", mtu);
@@ -300,6 +318,23 @@ extern "C" fn on_gap_event(event: *mut sys::ble_gap_event, arg: *mut c_void) -> 
 
       let notification = Notification { attr_handle, data };
       let _ = state.tx.send(Ok(ClientEvent::Notification(notification)));
+    }
+    GapEvent::PhyUpdated {
+      status,
+      conn_handle,
+      tx_phy,
+      rx_phy,
+    } => {
+      if status == 0 {
+        log::info!(
+          "PHY updated for conn {}: TX={} RX={}",
+          conn_handle,
+          utils::phy_name(tx_phy),
+          utils::phy_name(rx_phy),
+        );
+      } else {
+        log::warn!("PHY update failed for conn {}: status {}", conn_handle, status);
+      }
     }
     _ => {
       log::info!("Received unhandled GAP event for client: {:?}", event);

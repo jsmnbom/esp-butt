@@ -17,14 +17,15 @@ fn main() -> anyhow::Result<()> {
 
   utils::log::Subscriber::new(tracing::Level::DEBUG)
     .with_filter("esp_idf_svc::timer", tracing::Level::WARN)
-    .with_filter("buttplug", tracing::Level::INFO)
+    .with_filter("buttplug", tracing::Level::DEBUG)
+    .with_filter("esp_butt::ble", tracing::Level::TRACE)
     .install();
 
   hw::init()?;
   ble::init();
   buttplug::init();
 
-  utils::report::start_reporting(core::time::Duration::from_secs(5));
+  // utils::report::start_reporting(core::time::Duration::from_secs(5));
 
   log::info!("Hello, world!");
 

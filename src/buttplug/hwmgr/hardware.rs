@@ -35,6 +35,7 @@ use crate::ble::{
   Client,
   ClientConnector,
   ClientEvent,
+  ConnectionParameters,
   Notification,
   PeripheralProperties,
 };
@@ -77,6 +78,7 @@ impl HardwareConnector for BleHardwareConnector {
 
   async fn connect(&mut self) -> Result<Box<dyn HardwareSpecializer>, ButtplugDeviceError> {
     let connector = ClientConnector::new(self.properties.address);
+
     let client = connector.connect().await.map_err(|e| {
       ButtplugDeviceError::DeviceConnectionError(format!(
         "Failed to connect to device {:?}: {:?}",
@@ -210,7 +212,7 @@ impl BleHardware {
     rssi_notify: Arc<Notify>,
     rssi_tx: watch::Sender<i8>,
   ) -> Self {
-    let (event_stream, _) = broadcast::channel(16);
+    let (event_stream, _) = broadcast::channel(64);
     let event_stream_clone = event_stream.clone();
 
     let mut device_events = device.events();
@@ -235,26 +237,29 @@ impl BleHardware {
               match event {
                 Ok(Ok(event)) => match event {
                   ClientEvent::Notification(Notification { attr_handle, data }) => {
-                    log::info!("[{}] Notification: {} {:?}", address, attr_handle, data);
+                    log::info!("[{}] Notification: {} {:02x?} | str: {:?}", address, attr_handle, data, std::str::from_utf8(&data).ok());
 
                     if let Some((_, endpoint)) = attr_handle_endpoint_map
                       .iter()
                       .find(|(handle, _)| *handle == attr_handle)
                     {
-                      event_stream_clone
+                      if event_stream_clone
                         .send(HardwareEvent::Notification(
                           address.clone(),
                           endpoint.clone(),
                           data,
-                        ))
-                        .unwrap();
+                        )).is_err() {
+                          log::error!("[{}] Failed to send notification event for endpoint {}: channel closed", address, endpoint);
+                        }
                     }
                   }
                   ClientEvent::Disconnected => {
                     log::info!("[{}] Device disconnected", address);
-                    event_stream_clone
+                    if event_stream_clone
                       .send(HardwareEvent::Disconnected(address.clone()))
-                      .unwrap();
+                      .is_err() {
+                        log::error!("[{}] Failed to send disconnected event: channel closed", address);
+                      }
                   }
                   _ => {
                     log::info!("[{}] Received unknown device event: {:?}", address, event);
@@ -318,6 +323,11 @@ impl HardwareInternal for BleHardware {
     let endpoint = msg.endpoint();
     async move {
       let data = characteristic.read().await.map_err(to_hardware_err)?;
+      log::debug!(
+        "  data: {:02x?} | str: {:?}",
+        data,
+        std::str::from_utf8(&data).ok()
+      );
       Ok(HardwareReading::new(endpoint, &data))
     }
     .boxed()
@@ -378,6 +388,11 @@ impl HardwareInternal for BleHardware {
 
     let data = msg.data().clone();
     async move {
+      log::debug!(
+        "  data: {:02x?} | str: {:?}",
+        data,
+        std::str::from_utf8(&data).ok()
+      );
       if with_response {
         characteristic.write(&data).await.map_err(to_hardware_err)?;
       } else {

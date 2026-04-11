@@ -11,9 +11,6 @@ use crate::ble::{BleError, Characteristic, Descriptor, Service};
 pub struct Peer {
   pub services: Vec<Service>,
 
-  current_service_start_handle: u16,
-  current_characteristic_start_handle: u16,
-
   tx: Option<oneshot::Sender<Result<(), BleError>>>,
 
   _pin: PhantomPinned,
@@ -24,8 +21,6 @@ impl Peer {
     let (tx, rx) = oneshot::channel();
     let mut peer = Box::pin(Self {
       services: Vec::new(),
-      current_service_start_handle: 0,
-      current_characteristic_start_handle: 0,
       tx: Some(tx),
       _pin: PhantomPinned,
     });
@@ -74,75 +69,67 @@ impl Peer {
   }
 
   fn discover_characteristics(&mut self, conn_handle: u16) {
-    for service in &self.services {
-      if self.current_service_start_handle < service.start_handle {
-        log::trace!("Discovering characteristics for service {:?}", service.uuid);
-        self.current_service_start_handle = service.start_handle;
+    let start_handle = self.services.iter().map(|s| s.start_handle).min();
+    let end_handle = self.services.iter().map(|s| s.end_handle).max();
 
-        // If start == end then there is no space for characteristics
-        if service.start_handle == service.end_handle {
-          continue;
-        }
+    let (Some(start_handle), Some(end_handle)) = (start_handle, end_handle) else {
+      self.discover_all_descriptors(conn_handle);
+      return;
+    };
 
-        unsafe {
-          if let Err(error) = esp!(sys::ble_gattc_disc_all_chrs(
-            conn_handle,
-            service.start_handle,
-            service.end_handle,
-            Some(Self::on_gatt_chr),
-            self.as_raw(),
-          )) {
-            self.fail(error.into());
-          }
-        }
-        return;
+    log::trace!("Discovering all characteristics (handles {}-{})", start_handle, end_handle);
+
+    unsafe {
+      if let Err(error) = esp!(sys::ble_gattc_disc_all_chrs(
+        conn_handle,
+        start_handle,
+        end_handle,
+        Some(Self::on_gatt_chr),
+        self.as_raw(),
+      )) {
+        self.fail(error.into());
       }
     }
-    self.complete();
   }
 
-  fn discover_descriptors(&mut self, conn_handle: u16) {
-    let service = self
+  fn discover_all_descriptors(&mut self, conn_handle: u16) {
+    // Compute the tightest range that spans all known characteristic value
+    // handles up to the last service end handle.  Using the first
+    // characteristic's value handle (not a service start handle) as the lower
+    // bound avoids including service/characteristic declaration attributes that
+    // can never be descriptors.
+    let start_handle = self
       .services
       .iter()
-      .find(|s| s.start_handle == self.current_service_start_handle)
-      .unwrap();
-    for (i, characteristic) in service.characteristics.iter().enumerate() {
-      if self.current_characteristic_start_handle < characteristic.definition_handle {
-        log::trace!(
-          "Discovering descriptors for characteristic {:?}",
-          characteristic.uuid
-        );
-        self.current_characteristic_start_handle = characteristic.value_handle;
+      .flat_map(|s| s.characteristics.first())
+      .map(|c| c.value_handle)
+      .min();
+    let end_handle = self.services.iter().map(|s| s.end_handle).max();
 
-        // End handle is start of next characteristic or end of service
-        let end_handle = if i + 1 < service.characteristics.len() {
-          service.characteristics[i + 1].definition_handle - 1
-        } else {
-          service.end_handle
-        };
+    let (Some(start_handle), Some(end_handle)) = (start_handle, end_handle) else {
+      // No characteristics at all; nothing to discover.
+      self.complete();
+      return;
+    };
 
-        // If the characteristic has no descriptors, skip to the next characteristic
-        if characteristic.value_handle == end_handle {
-          self.current_characteristic_start_handle = characteristic.value_handle;
-          continue;
-        }
+    if start_handle >= end_handle {
+      self.complete();
+      return;
+    }
 
-        unsafe {
-          if let Err(error) = esp!(sys::ble_gattc_disc_all_dscs(
-            conn_handle,
-            characteristic.value_handle,
-            end_handle,
-            Some(Self::on_gatt_dsc),
-            self.as_raw(),
-          )) {
-            self.fail(error.into());
-          }
-        }
-        return;
+    log::trace!("Discovering all descriptors (handles {}-{})", start_handle, end_handle);
+
+    unsafe {
+      if let Err(error) = esp!(sys::ble_gattc_disc_all_dscs(
+        conn_handle,
+        start_handle,
+        end_handle,
+        Some(Self::on_gatt_dsc),
+        self.as_raw(),
+      )) {
+        self.fail(error.into());
       }
     }
-    self.discover_characteristics(conn_handle);
   }
 }
 
@@ -193,16 +180,18 @@ impl Peer {
     let error = unsafe { &*error };
 
     if error.status == sys::BLE_HS_EDONE as u16 {
-      // All characteristics discovered, start discovery of descriptors for this service
-      peer.discover_descriptors(conn_handle);
+      peer.discover_all_descriptors(conn_handle);
       return 0;
     }
 
     if error.status == 0 {
       let chr = unsafe { &(*chr) };
+      let characteristic = Characteristic::new(conn_handle, chr);
+      // Attribute the characteristic to whichever service owns its handle range.
       for service in &mut peer.services {
-        if service.start_handle == peer.current_service_start_handle {
-          let characteristic = Characteristic::new(conn_handle, chr);
+        if characteristic.definition_handle >= service.start_handle
+          && characteristic.definition_handle <= service.end_handle
+        {
           log::trace!(
             "Discovered characteristic: {:?} ({}, {})",
             characteristic.uuid,
@@ -223,7 +212,7 @@ impl Peer {
   extern "C" fn on_gatt_dsc(
     conn_handle: u16,
     error: *const sys::ble_gatt_error,
-    chr_val_handle: u16,
+    _chr_val_handle: u16,
     dsc: *const sys::ble_gatt_dsc,
     arg: *mut c_void,
   ) -> i32 {
@@ -232,28 +221,40 @@ impl Peer {
 
     if error.status == sys::BLE_HS_EDONE as u16 {
       log::trace!("Descriptor discovery complete");
-      peer.discover_descriptors(conn_handle);
+      peer.complete();
       return 0;
     }
 
     if error.status == 0 {
       let descriptor = Descriptor::new(unsafe { &*dsc });
-      log::trace!(
-        "Discovered descriptor: {:?} ({})",
-        descriptor.uuid,
-        descriptor.handle
-      );
-      if let Some(service) = peer
-        .services
-        .iter_mut()
-        .find(|s| s.start_handle == peer.current_service_start_handle)
-      {
-        if let Some(characteristic) = service
-          .characteristics
-          .iter_mut()
-          .find(|c| c.value_handle == chr_val_handle)
-        {
-          characteristic.descriptors.push(descriptor);
+      let dsc_handle = descriptor.handle;
+      // disc_all_dscs returns every attribute in the range, including
+      // characteristic declarations (0x2803) and characteristic value
+      // attributes. Find the owning service and characteristic by handle
+      // range, and skip anything that isn't an actual descriptor.
+      'outer: for service in peer.services.iter_mut() {
+        let num_chars = service.characteristics.len();
+        for i in 0..num_chars {
+          let chr = &service.characteristics[i];
+          // Handles at or before the value handle belong to the declaration
+          // or value attribute, not a descriptor.
+          if dsc_handle <= chr.value_handle {
+            break 'outer;
+          }
+          let chr_end = if i + 1 < num_chars {
+            service.characteristics[i + 1].definition_handle - 1
+          } else {
+            service.end_handle
+          };
+          if dsc_handle <= chr_end {
+            log::trace!(
+              "Discovered descriptor: {:?} ({})",
+              descriptor.uuid,
+              dsc_handle
+            );
+            service.characteristics[i].descriptors.push(descriptor);
+            break 'outer;
+          }
         }
       }
       return 0;

@@ -14,7 +14,6 @@ use crate::utils::heap::{HEAP, MALLOC_CAP_EXTERNAL};
 
 static BUTTPLUG_DATA_SIZE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/buttplug/data.bin.size"));
 static BUTTPLUG_DATA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/buttplug/data.bin.gz"));
-// const RSSI_FEATURE_UUID: uuid::Uuid = uuid::uuid!("00000000-0000-0000-0000-000000000001");
 
 #[derive(Debug, Deserialize)]
 pub struct ButtplugData {

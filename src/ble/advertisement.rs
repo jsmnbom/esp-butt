@@ -44,6 +44,8 @@ pub struct AdReport<'a> {
   pub address: Address,
   pub rssi: i8,
   pub data: AdData<'a>,
+  #[allow(dead_code)]
+  pub prim_phy: u8,
 }
 
 impl<'a> TryFrom<&'a sys::ble_gap_disc_desc> for AdReport<'a> {
@@ -61,7 +63,35 @@ impl<'a> TryFrom<&'a sys::ble_gap_disc_desc> for AdReport<'a> {
       address,
       rssi,
       data,
+      prim_phy: sys::BLE_HCI_LE_PHY_1M as u8,
     });
+  }
+}
+
+impl<'a> TryFrom<&'a sys::ble_gap_ext_disc_desc> for AdReport<'a> {
+  type Error = BleError;
+
+  fn try_from(desc: &'a sys::ble_gap_ext_disc_desc) -> Result<Self, Self::Error> {
+    let address = Address::try_from(desc.addr)?;
+    let rssi = desc.rssi;
+    let prim_phy = desc.prim_phy;
+    let data = AdData {
+      payload: unsafe { core::slice::from_raw_parts(desc.data, desc.length_data as _) },
+    };
+    let event_type = if desc.props & sys::BLE_HCI_ADV_LEGACY_MASK as u8 != 0 {
+      AdEventType::from_repr(desc.legacy_event_type).ok_or(BleError::InvalidValue)?
+    } else if desc.props & sys::BLE_HCI_ADV_CONN_MASK as u8 != 0 {
+      AdEventType::AdvInd
+    } else {
+      AdEventType::NonconnInd
+    };
+    Ok(Self {
+      event_type,
+      address,
+      rssi,
+      data,
+      prim_phy,
+    })
   }
 }
 

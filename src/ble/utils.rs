@@ -35,6 +35,15 @@ pub fn uuid128(bytes: &[u8; 16]) -> Result<Uuid, BleError> {
   ))
 }
 
+pub fn phy_name(phy: u8) -> &'static str {
+  match phy as u32 {
+    sys::BLE_HCI_LE_PHY_1M => "1M",
+    sys::BLE_HCI_LE_PHY_2M => "2M",
+    sys::BLE_HCI_LE_PHY_CODED => "Coded",
+    _ => "unknown",
+  }
+}
+
 pub fn os_mbuf_to_vec(mbuf_ptr: *mut sys::os_mbuf) -> Vec<u8> {
   if mbuf_ptr.is_null() {
     return Vec::new();

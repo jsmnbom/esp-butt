@@ -62,6 +62,17 @@ extern "C" fn on_sync() {
   unsafe {
     sys::ble_hs_util_ensure_addr(0);
 
+    // Prefer Coded PHY (LE Long Range) for both TX and RX on all new connections.
+    // The controller will automatically negotiate a PHY update after connecting.
+    // Devices that don't support Coded PHY will simply stay on 1M.
+    let rc = sys::ble_gap_set_prefered_default_le_phy(
+      sys::BLE_GAP_LE_PHY_CODED_MASK as u8,
+      sys::BLE_GAP_LE_PHY_CODED_MASK as u8,
+    );
+    if rc != 0 {
+      log::warn!("Failed to set preferred default PHY: {}", rc);
+    }
+
     SYNCED.store(true, Ordering::Release);
   }
 }

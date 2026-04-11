@@ -22,7 +22,7 @@ use ratatui::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
   },
   layout::{Constraint, Direction, Layout, Rect},
-  widgets::{Block, Borders, StatefulWidget, Widget},
+  widgets::{Block, Borders, Widget},
 };
 use ratatui_image::{Resize, StatefulImage, picker::Picker, protocol::StatefulProtocol};
 use tokio::sync::{broadcast, watch};

@@ -60,6 +60,13 @@ pub enum GapEvent<'a> {
     tx_phy: u8,
     rx_phy: u8,
   },
+  DataLengthChanged {
+    conn_handle: u16,
+    max_tx_octets: u16,
+    max_tx_time: u16,
+    max_rx_octets: u16,
+    max_rx_time: u16,
+  },
 }
 
 impl TryFrom<*mut sys::ble_gap_event> for GapEvent<'static> {
@@ -105,6 +112,10 @@ impl<'a> TryFrom<&'a sys::ble_gap_event> for GapEvent<'a> {
       sys::BLE_GAP_EVENT_DISC => {
         let disc = unsafe { &value.__bindgen_anon_1.disc };
         Ok(Self::Discovery(AdReport::try_from(disc)?))
+      }
+      sys::BLE_GAP_EVENT_EXT_DISC => {
+        let ext_disc = unsafe { &value.__bindgen_anon_1.ext_disc };
+        Ok(Self::Discovery(AdReport::try_from(ext_disc)?))
       }
       sys::BLE_GAP_EVENT_DISC_COMPLETE => {
         let disc_complete = unsafe { &value.__bindgen_anon_1.disc_complete };
@@ -164,6 +175,16 @@ impl<'a> TryFrom<&'a sys::ble_gap_event> for GapEvent<'a> {
           conn_handle: phy_update.conn_handle,
           tx_phy: phy_update.tx_phy,
           rx_phy: phy_update.rx_phy,
+        })
+      }
+      sys::BLE_GAP_EVENT_DATA_LEN_CHG => {
+        let data_len_chg = unsafe { &value.__bindgen_anon_1.data_len_chg };
+        Ok(Self::DataLengthChanged {
+          conn_handle: data_len_chg.conn_handle,
+          max_tx_octets: data_len_chg.max_tx_octets,
+          max_tx_time: data_len_chg.max_tx_time,
+          max_rx_octets: data_len_chg.max_rx_octets,
+          max_rx_time: data_len_chg.max_rx_time,
         })
       }
 

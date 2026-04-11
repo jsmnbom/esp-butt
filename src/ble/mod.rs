@@ -29,6 +29,7 @@ pub enum BleError {
   Unimplemented,
   MissingNotifyDescriptor,
   Internal,
+  Timeout,
   EspError(sys::EspError),
   NimbleError(u16),
 }

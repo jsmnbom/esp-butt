@@ -34,3 +34,19 @@ pub enum AppEvent {
   Tick,
   Quit,
 }
+
+impl std::fmt::Display for AppEvent {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      AppEvent::Navigation(nav) => write!(f, "Navigation({nav:?})"),
+      AppEvent::Slider(SliderEvent::Changed(index, value)) => {
+        write!(f, "SliderChanged(index={index}, value={value})")
+      }
+      AppEvent::ButtplugEvent(event) => write!(f, "ButtplugEvent({event:?})"),
+      AppEvent::BackdoorEvent(event) => write!(f, "BackdoorEvent({event})"),
+      AppEvent::Draw => write!(f, "Draw"),
+      AppEvent::Tick => write!(f, "Tick"),
+      AppEvent::Quit => write!(f, "Quit"),
+    }
+  }
+}

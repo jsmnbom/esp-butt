@@ -64,10 +64,6 @@ pub struct AdcInputs {
   battery_raw: Arc<AtomicU16>,
 }
 
-fn to_range(value: u16, max: u16) -> u16 {
-  (value as u32 * max as u32 / SLIDER_MAX_VALUE as u32) as u16
-}
-
 impl AdcInputs {
   pub fn new<ADC: AdcUnit>(
     adc_unit: impl Adc<AdcUnit = ADC> + 'static,
@@ -121,7 +117,6 @@ impl AdcInputs {
           let value = values[i].load(Ordering::Acquire);
 
           if value != last_values_sent[i] {
-            log::info!("Slider {} changed to {:<4} -> {:<4} | 0-5: {:<2} | 0-10: {:<2} | 0-20: {:<2}", i, last_values_sent[i], value, to_range(value, 5), to_range(value, 10), to_range(value, 20));
             yield AppEvent::Slider(SliderEvent::Changed(i as u8, value));
             last_values_sent[i] = value;
           }

@@ -22,3 +22,13 @@ impl DiscoveredDevice {
 pub enum ButtplugBackdoorEvent {
   DeviceDiscovered(DiscoveredDevice),
 }
+
+impl std::fmt::Display for ButtplugBackdoorEvent {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      ButtplugBackdoorEvent::DeviceDiscovered(device) => {
+        write!(f, "DeviceDiscovered(name={}, address={})", device.name, device.address)
+      }
+    }
+  }
+}

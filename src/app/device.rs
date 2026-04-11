@@ -5,7 +5,7 @@ use buttplug_client::ButtplugClientDevice;
 use buttplug_core::message::InputType;
 use tokio::sync::{Notify, watch};
 
-use crate::buttplug::{backdoor::DiscoveredDevice};
+use crate::buttplug::backdoor::DiscoveredDevice;
 
 #[derive(Debug, Clone)]
 pub struct AppDevice {
@@ -20,6 +20,7 @@ pub struct AppDevice {
   rssi_notify: Option<Arc<tokio::sync::Notify>>,
   rssi: Option<i8>,
   last_rssi_read: Option<std::time::Instant>,
+  battery_read_fail_count: u8,
   battery: Option<u32>,
   last_battery_read: Option<std::time::Instant>,
 }
@@ -44,6 +45,7 @@ impl AppDevice {
       #[cfg(not(target_os = "espidf"))]
       rssi: Some(-30), // Mock devices are always -30, which is a strong signal. This is just to make testing easier.
       last_rssi_read: None,
+      battery_read_fail_count: 0,
       battery: None,
       last_battery_read: None,
     }
@@ -153,7 +155,9 @@ impl AppDevice {
     }
     let now = std::time::Instant::now();
     if self.is_connected() {
-      if self.last_rssi_read.map_or(true, |t| now.duration_since(t) >= std::time::Duration::from_secs(3)) {
+      if self.last_rssi_read.map_or(true, |t| {
+        now.duration_since(t) >= std::time::Duration::from_secs(3)
+      }) {
         if let Some(notify) = &self.rssi_notify {
           notify.notify_one();
         }
@@ -162,22 +166,30 @@ impl AppDevice {
     }
 
     let mut battery_changed = false;
-    if self.last_battery_read.map_or(true, |t| now.duration_since(t) >= std::time::Duration::from_secs(60)) {
+    if self.is_connected()
+      && self.last_battery_read.map_or(true, |t| {
+        now.duration_since(t) >= std::time::Duration::from_secs(30)
+      })
+      && self.battery_read_fail_count < 3
+    {
       if let Some(device) = self.connected_device.clone() {
         if device.input_available(InputType::Battery) {
+          log::debug!("[{}] reading battery level...", self.address);
           match device.battery().await {
             Ok(level) => {
               log::debug!("[{}] battery: {}%", self.address, level);
-              if self.battery != Some(level) {
-                self.battery = Some(level);
-                battery_changed = true;
-              }
+              self.battery = Some(level);
+              battery_changed = true;
+              self.battery_read_fail_count = 0;
             }
-            Err(e) => log::warn!("[{}] battery read error: {:?}", self.address, e),
+            Err(e) => {
+              log::warn!("[{}] battery read error: {:?}", self.address, e);
+              self.battery_read_fail_count += 1;
+            }
           }
         }
-        self.last_battery_read = Some(now);
       }
+      self.last_battery_read = Some(now);
     }
 
     Ok(rssi_changed || battery_changed)
