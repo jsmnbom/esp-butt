@@ -18,7 +18,6 @@ fn main() -> anyhow::Result<()> {
   utils::log::Subscriber::new(tracing::Level::DEBUG)
     .with_filter("esp_idf_svc::timer", tracing::Level::WARN)
     .with_filter("buttplug", tracing::Level::DEBUG)
-    .with_filter("esp_butt::ble", tracing::Level::TRACE)
     .install();
 
   hw::init()?;
@@ -75,7 +74,6 @@ async fn main() -> anyhow::Result<()> {
   tracing::subscriber::set_global_default(
     tracing_subscriber::fmt()
       .with_max_level(tracing::Level::DEBUG)
-      .without_time()
       .with_writer(std::io::stderr)
       .finish()
       .with(tracing_tracy::TracyLayer::default()),

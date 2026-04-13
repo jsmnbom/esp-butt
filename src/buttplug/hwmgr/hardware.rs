@@ -2,6 +2,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use btuuid::BluetoothUuid16;
+use uuid::Uuid;
 use buttplug_core::{errors::ButtplugDeviceError, util::async_manager};
 use buttplug_server::device::hardware::{
   Hardware,
@@ -35,7 +37,6 @@ use crate::ble::{
   Client,
   ClientConnector,
   ClientEvent,
-  ConnectionParameters,
   Notification,
   PeripheralProperties,
 };
@@ -127,6 +128,34 @@ impl HardwareSpecializer for BleHardwareSpecializer {
     let mut endpoint_characteristic_map = Vec::new();
     let mut attr_handle_endpoint_map = Vec::new();
     let device = self.device.take().unwrap();
+
+    // Standard GATT client initialization — BlueZ, Android, and iOS all do
+    // these writes after discovery. Without them, some devices (e.g. Lovense
+    // Domi 2) treat the central as "change-unaware" and stop sending
+    // notifications after ~30 seconds.
+    let conn_handle = device.conn_handle();
+    for service in device.services_iter() {
+      for chr in &service.characteristics {
+        // Client Supported Features (0x2B29): Robust Caching (bit 0) +
+        // Multiple Handle Value Notifications (bit 2).
+        if chr.uuid == Uuid::from(BluetoothUuid16::new(0x2B29)) {
+          log::debug!("Writing Client Supported Features");
+          if let Err(e) =
+            crate::ble::write_with_response(conn_handle, chr.value_handle, &[0x05]).await
+          {
+            log::warn!("Failed to write Client Supported Features: {:?}", e);
+          }
+        }
+        // Service Changed (0x2A05): subscribe to indications so the device
+        // knows we will handle GATT database change notifications.
+        if chr.uuid == Uuid::from(BluetoothUuid16::new(0x2A05)) {
+          log::debug!("Subscribing to Service Changed indications");
+          if let Err(e) = chr.set_notify(&[0x02, 0x00]).await {
+            log::warn!("Failed to subscribe to Service Changed: {:?}", e);
+          }
+        }
+      }
+    }
 
     if let Some(ProtocolCommunicationSpecifier::BluetoothLE(btle)) = specifiers
       .iter()
@@ -324,7 +353,8 @@ impl HardwareInternal for BleHardware {
     async move {
       let data = characteristic.read().await.map_err(to_hardware_err)?;
       log::debug!(
-        "  data: {:02x?} | str: {:?}",
+        "Read value from endpoint {} data: {:02x?} | str: {:?}",
+        endpoint,
         data,
         std::str::from_utf8(&data).ok()
       );
@@ -336,7 +366,7 @@ impl HardwareInternal for BleHardware {
     &self,
     msg: &HardwareWriteCmd,
   ) -> BoxFuture<'static, Result<(), ButtplugDeviceError>> {
-    log::debug!("Writing value for endpoint {}", msg.endpoint());
+    log::debug!("Writing value for endpoint {} data: {:02x?} | str: {:?}", msg.endpoint(), msg.data(), std::str::from_utf8(msg.data()).ok());
     let characteristic = match self.get_characteristic(&msg.endpoint()) {
       Ok(chr) => chr,
       Err(e) => return err_boxed(e),
@@ -388,11 +418,6 @@ impl HardwareInternal for BleHardware {
 
     let data = msg.data().clone();
     async move {
-      log::debug!(
-        "  data: {:02x?} | str: {:?}",
-        data,
-        std::str::from_utf8(&data).ok()
-      );
       if with_response {
         characteristic.write(&data).await.map_err(to_hardware_err)?;
       } else {

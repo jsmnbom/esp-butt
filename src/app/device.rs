@@ -25,6 +25,22 @@ pub struct AppDevice {
   last_battery_read: Option<std::time::Instant>,
 }
 
+impl Drop for AppDevice {
+  fn drop(&mut self) {
+    log::debug!(
+      "AppDevice dropped: name={:?} address={} approval={} connected={}",
+      self.name,
+      self.address,
+      if self.approval.is_some() {
+        "Some"
+      } else {
+        "None"
+      },
+      self.connected_device.is_some(),
+    );
+  }
+}
+
 impl AppDevice {
   pub fn from_discovered(
     discovered: DiscoveredDevice,
@@ -111,6 +127,8 @@ impl AppDevice {
       return Ok(());
     };
 
+    log::info!("Disconnecting from '{}'", self.name);
+
     if let Err(e) = device.stop().await {
       log::warn!(
         "Error stopping device '{}' before disconnect: {:?}",
@@ -131,6 +149,8 @@ impl AppDevice {
       .disconnect_device(device.index())
       .await
       .map_err(|e| anyhow!("Error disconnecting '{}': {:?}", self.name, e))?;
+
+    log::info!("Disconnected from '{}'", self.name);
 
     Ok(())
   }
@@ -185,11 +205,19 @@ impl AppDevice {
             Err(e) => {
               log::warn!("[{}] battery read error: {:?}", self.address, e);
               self.battery_read_fail_count += 1;
+              if self.battery_read_fail_count >= 3 {
+                log::warn!(
+                  "[{}] battery read failed {} times, giving up. See buttplug.io issue #865 for details.",
+                  self.address,
+                  self.battery_read_fail_count
+                );
+              }
             }
           }
         }
+
+        self.last_battery_read = Some(now);
       }
-      self.last_battery_read = Some(now);
     }
 
     Ok(rssi_changed || battery_changed)

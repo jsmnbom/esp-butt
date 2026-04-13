@@ -4,7 +4,7 @@ mod encoder;
 mod ticker;
 
 pub use adc::{AdcInputs, SLIDER_MAX_VALUE};
-pub use display::Display;
+pub use display::{Display, DisplayCanvas};
 pub use encoder::Encoder;
 use esp_idf_svc::{
   hal::{

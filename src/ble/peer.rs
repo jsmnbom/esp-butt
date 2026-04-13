@@ -210,7 +210,7 @@ impl Peer {
   }
 
   extern "C" fn on_gatt_dsc(
-    conn_handle: u16,
+    _conn_handle: u16,
     error: *const sys::ble_gatt_error,
     _chr_val_handle: u16,
     dsc: *const sys::ble_gatt_dsc,

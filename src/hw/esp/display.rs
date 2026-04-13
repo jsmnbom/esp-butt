@@ -4,8 +4,15 @@ use esp_idf_svc::hal::gpio::{InputPin, OutputPin};
 use esp_idf_svc::hal::i2c::{I2c, I2cConfig, I2cDriver};
 use esp_idf_svc::hal::units::*;
 use mini_oled::prelude::*;
+use mini_oled::screen::canvas::Canvas;
 
-pub struct Display(Box<Sh1106<I2cInterface<I2cDriver<'static>>>>);
+const WIDTH: u32 = 128;
+const HEIGHT: u32 = 64;
+const OFFSET: u8 = 2;
+const BUFFER_SIZE: usize = WIDTH as usize * HEIGHT as usize / 8;
+pub type DisplayCanvas = Canvas<BUFFER_SIZE, WIDTH, HEIGHT, OFFSET>;
+
+pub struct Display(Sh1106<I2cInterface<I2cDriver<'static>>>);
 
 impl Display {
   pub fn new(
@@ -16,7 +23,7 @@ impl Display {
     let i2c_config = I2cConfig::new().baudrate(400.kHz().into());
     let i2c_driver = I2cDriver::new(i2c, sda, scl, &i2c_config)?;
     let i2c_interface = I2cInterface::new(i2c_driver, 0x3C);
-    let mut display = Box::new(Sh1106::new(i2c_interface));
+    let mut display = Sh1106::new(i2c_interface);
 
     display.init()?;
     display.set_rotation(DisplayRotation::Rotate180)?;

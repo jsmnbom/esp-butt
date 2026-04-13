@@ -167,13 +167,13 @@ impl Encoder {
     let a = unsafe { sys::gpio_get_level(arg.pin_a.into()) != 0 };
     let b = unsafe { sys::gpio_get_level(arg.pin_b.into()) != 0 };
 
-    // Clockwise: { a: false, b: false } followed by { a: true, b: true } -> Down
-    // Counterclockwise: { a: false, b: true } followed by { a: true, b: false } -> Up
+    // Clockwise: { a: false, b: false } followed by { a: true, b: true } -> Up
+    // Counterclockwise: { a: false, b: true } followed by { a: true, b: false } -> Down
 
     let event = if a && b {
-      NavigationEvent::Down
-    } else if a && !b {
       NavigationEvent::Up
+    } else if a && !b {
+      NavigationEvent::Down
     } else {
       return;
     };

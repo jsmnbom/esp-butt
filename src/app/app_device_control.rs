@@ -9,7 +9,7 @@ use litemap::LiteMap;
 
 use crate::{
   app::{App, AppDevice, MAIN_FONT, NavigationEvent, SMALL_FONT, SliderEvent},
-  hw,
+  hw::{self, DisplayCanvas},
   img,
   utils::draw::*,
 };
@@ -98,19 +98,7 @@ impl App {
     match nav_event {
       NavigationEvent::Up | NavigationEvent::Down => {}
       NavigationEvent::Select => {
-        if let Some(current_index) = self.current_device_index {
-          self.goto_disconnecting();
-          if let Some(device) = self.devices.get_mut(current_index) {
-            if let Err(e) = device.disconnect().await {
-              log::warn!("Error disconnecting device: {:?}", e);
-              self.current_device_index = None;
-              self.goto_device_list().await;
-            }
-            // On success, DeviceRemoved event will transition to device list
-          }
-        } else {
-          self.goto_device_list().await;
-        }
+        self.disconnect_current_device().await;
       }
     }
   }
@@ -141,7 +129,11 @@ impl App {
             &ClientDeviceCommandValue::Steps(output.step),
           )
           .unwrap();
-          log::debug!(target: "slider", "sending command for slider {}", slider_index);
+          log::debug!(
+            "Slider {} changed, sending command: {:?}",
+            slider_index,
+            cmd
+          );
           let send_result = (
             async { Some(output.feature.run_output(&cmd).await) },
             async {
@@ -151,11 +143,9 @@ impl App {
           )
             .race()
             .await;
-          log::debug!(target: "slider", "command finished for slider {}", slider_index);
           match send_result {
             Some(Ok(_)) => {
               output.last_sent_step = Some(output.step);
-              log::info!("Sent command for slider {}", slider_index);
             }
             Some(Err(e)) => {
               log::error!("Error sending command for slider {}: {:?}", slider_index, e)
@@ -173,78 +163,98 @@ impl App {
 
   // ── Drawing ──────────────────────────────────────────────────────────────
 
-  pub fn draw_device_control(&mut self, state: &DeviceControlState) -> anyhow::Result<()> {
-    let Some(current_index) = self.current_device_index else {
+  pub fn draw_current_device_text(
+    &self,
+    screen: &mut DisplayCanvas,
+    last_line: Option<&str>,
+  ) -> anyhow::Result<()> {
+    Text::new(
+      self.current_device().map(|d| d.name()).unwrap_or("???"),
+      Point::new(64, 12),
+      &MAIN_FONT,
+    )
+    .align(HorizontalAlignment::Center)
+    .draw(screen)?;
+    Text::new(
+      self.current_device().map(|d| d.address()).unwrap_or("???"),
+      Point::new(64, 22),
+      &SMALL_FONT,
+    )
+    .align(HorizontalAlignment::Center)
+    .draw(screen)?;
+    if let Some(last) = last_line {
+      Text::new(last, Point::new(64, 30), &SMALL_FONT)
+        .align(HorizontalAlignment::Center)
+        .draw(screen)?;
+    }
+
+    Ok(())
+  }
+
+  pub fn draw_device_control(&self, state: &DeviceControlState) -> anyhow::Result<()> {
+    let Some(device) = self.current_device() else {
       return Ok(());
     };
 
-    let Some(app_device) = self.devices.get(current_index) else {
-      return Ok(());
-    };
-
-    let screen = self.display.get_mut_canvas();
+    let mut screen = self.screen();
+    let screen = &mut *screen;
 
     ControllerBattery {
-      point: Point::new(0, 0),
-      level: self.self_battery,
+      point: Point::new(60, 0),
+      level: self.battery(),
     }
     .draw(screen)?;
 
-    Text::new(app_device.name(), Point::new(0, 6), &MAIN_FONT).draw(screen)?;
-    Text::new(app_device.address(), Point::new(0, 16), &SMALL_FONT).draw(screen)?;
-    if let Some(pretty) = app_device.pretty_name() {
-      Text::new(pretty, Point::new(0, 24), &SMALL_FONT).draw(screen)?;
-    }
+    self.draw_current_device_text(screen, device.pretty_name())?;
 
-    if let Some(rssi) = app_device.rssi() {
+    if let Some(rssi) = device.rssi() {
       SignalStrengthBar {
-        point: Point::new(10, 40),
+        point: Point::new(45, 40),
         rssi,
       }
       .draw(screen)?;
     }
-    if let Some(battery) = app_device.battery() {
+    if let Some(battery) = device.battery() {
       DeviceBattery {
-        point: Point::new(40, 46),
+        point: Point::new(65, 46),
         level: battery as u8,
       }
       .draw(screen)?;
     }
 
-    let start_x = if state.outputs.len() > 1 { 84 } else { 84 + 24 };
-
-    for (i, (_, output)) in state.outputs.iter().take(2).enumerate() {
-      let x = start_x + (i as i32 * 24);
-
-      OutputSlider::new(x, output).draw(screen)?;
-    }
+    OutputSlider::new(0, state.outputs.get(&0), true).draw(screen)?;
+    OutputSlider::new(110, state.outputs.get(&1), false).draw(screen)?;
 
     Ok(())
   }
 
-  pub fn draw_disconnecting(&mut self) -> anyhow::Result<()> {
-    let name = self
-      .current_device()
-      .map(|d| d.name().to_string())
-      .unwrap_or_else(|| "?".to_string());
-    let screen = self.display.get_mut_canvas();
-    Text::new(&name, Point::new(0, 20), &MAIN_FONT).draw(screen)?;
-    Text::new("Disconnecting...", Point::new(0, 36), &SMALL_FONT).draw(screen)?;
-    Ok(())
+  pub fn draw_connecting(&self) -> anyhow::Result<()> {
+    let mut screen = self.screen();
+    let screen = &mut *screen;
+    self.draw_current_device_text(screen, Some("Connecting..."))
+  }
+
+  pub fn draw_disconnecting(&self) -> anyhow::Result<()> {
+    let mut screen = self.screen();
+    let screen = &mut *screen;
+    self.draw_current_device_text(screen, Some("Disconnecting..."))
   }
 }
 
-fn icon_for_output_type(output_type: OutputType) -> &'static ImageRaw<'static, BinaryColor> {
+fn icon_for_output_type(
+  output_type: Option<OutputType>,
+) -> &'static ImageRaw<'static, BinaryColor> {
   match output_type {
-    OutputType::Vibrate => &img::ICON_VIBRATE,
-    OutputType::Rotate => &img::ICON_ROTATE,
-    OutputType::Oscillate => &img::ICON_OSCILLATE,
-    OutputType::Constrict => &img::ICON_CONSTRICT,
-    OutputType::Temperature => &img::ICON_TEMPERATURE,
-    OutputType::Led => &img::ICON_LED,
-    OutputType::Position => &img::ICON_POSITION,
-    OutputType::HwPositionWithDuration => &img::ICON_HW_POSITION_WITH_DURATION,
-    OutputType::Spray => &img::ICON_SPRAY,
+    Some(OutputType::Vibrate) => &img::ICON_VIBRATE,
+    Some(OutputType::Rotate) => &img::ICON_ROTATE,
+    Some(OutputType::Oscillate) => &img::ICON_OSCILLATE,
+    Some(OutputType::Constrict) => &img::ICON_CONSTRICT,
+    Some(OutputType::Temperature) => &img::ICON_TEMPERATURE,
+    Some(OutputType::Led) => &img::ICON_LED,
+    Some(OutputType::Position) => &img::ICON_POSITION,
+    Some(OutputType::HwPositionWithDuration) => &img::ICON_HW_POSITION_WITH_DURATION,
+    Some(OutputType::Spray) => &img::ICON_SPRAY,
+    None => &img::ICON_NONE,
   }
 }
 
@@ -257,12 +267,13 @@ fn scale_slider_to_step(slider_value: u16, _step_count: u32, step_min: i32, step
 
 struct OutputSlider<'a> {
   x: i32,
-  output: &'a DeviceControlOutput,
+  output: Option<&'a DeviceControlOutput>,
+  mirror: bool,
 }
 
 impl OutputSlider<'_> {
-  fn new<'a>(x: i32, output: &'a DeviceControlOutput) -> OutputSlider<'a> {
-    OutputSlider { x, output }
+  fn new<'a>(x: i32, output: Option<&'a DeviceControlOutput>, mirror: bool) -> OutputSlider<'a> {
+    OutputSlider { x, output, mirror }
   }
 }
 
@@ -274,59 +285,86 @@ impl<'a> Drawable for OutputSlider<'a> {
   where
     D: DrawTarget<Color = Self::Color>,
   {
+    let text_alignment = if self.mirror {
+      HorizontalAlignment::Left
+    } else {
+      HorizontalAlignment::Right
+    };
+    let bar_x = if self.mirror { self.x } else { self.x + 13 };
+    let bar_line_x = if self.mirror { self.x + 2 } else { self.x + 15 };
+    let type_rect_x = if self.mirror { self.x } else { self.x + 5 };
+    let type_img_x = if self.mirror { self.x + 2 } else { self.x + 7 };
+    let step_text_x = if self.mirror { self.x + 10 } else { self.x + 8 };
+    let step_line_x = if self.mirror { self.x + 6 } else { self.x + 9 };
+    let cur_step_rect_x = if self.mirror { self.x + 7 } else { self.x };
+    let cur_step_text_x = if self.mirror { self.x + 9 } else { self.x + 9 };
+
     RoundedRectangle::new(
-      Rectangle::new(Point::new(self.x + 4, 51), Size::new(13, 13)),
+      Rectangle::new(Point::new(bar_x, 0), Size::new(5, 50)),
       CornerRadiiBuilder::new().all(Size::new(2, 2)).build(),
     )
     .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
     .draw(target)?;
+
+    RoundedRectangle::new(
+      Rectangle::new(Point::new(type_rect_x, 51), Size::new(13, 13)),
+      CornerRadiiBuilder::new().all(Size::new(2, 2)).build(),
+    )
+    .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
+    .draw(target)?;
+
     Image::new(
-      icon_for_output_type(self.output.output_type),
-      Point::new(self.x + 6, 53),
+      icon_for_output_type(self.output.map(|o| o.output_type)),
+      Point::new(type_img_x, 53),
     )
     .draw(target)?;
 
-    RoundedRectangle::new(
-      Rectangle::new(Point::new(self.x + 13, 0), Size::new(4, 50)),
-      CornerRadiiBuilder::new().all(Size::new(2, 2)).build(),
-    )
-    .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
-    .draw(target)?;
+    if let Some(output) = self.output {
+      let bar_line_y = 47 - (output.value as i32 * 45) / hw::SLIDER_MAX_VALUE as i32;
+      if bar_line_y < 47 {
+        Line::new(
+          Point::new(bar_line_x, bar_line_y),
+          Point::new(bar_line_x, 47),
+        )
+        .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
+        .draw(target)?;
+      }
 
-    Text::new("0", Point::new(self.x + 7, 44), &SMALL_FONT)
-      .align(HorizontalAlignment::Right)
+      Text::new("0", Point::new(step_text_x, 44), &SMALL_FONT)
+        .align(text_alignment)
+        .draw(target)?;
+
+      Line::new(Point::new(step_line_x, 47), Point::new(step_line_x + 2, 47))
+        .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
+        .draw(target)?;
+
+      Text::new(
+        &format!("{}", output.step_count),
+        Point::new(step_text_x, 0),
+        &SMALL_FONT,
+      )
+      .align(text_alignment)
       .draw(target)?;
 
-    Line::new(Point::new(self.x + 8, 47), Point::new(self.x + 10, 47))
+      Line::new(Point::new(step_line_x, 3), Point::new(step_line_x + 2, 3))
+        .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
+        .draw(target)?;
+
+      RoundedRectangle::new(
+        Rectangle::new(Point::new(cur_step_rect_x, 22), Size::new(11, 9)),
+        CornerRadiiBuilder::new().all(Size::new(2, 2)).build(),
+      )
       .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
       .draw(target)?;
 
-    Text::new(
-      &format!("{}", self.output.step_count),
-      Point::new(self.x + 7, 0),
-      &SMALL_FONT,
-    )
-    .align(HorizontalAlignment::Right)
-    .draw(target)?;
-
-    Line::new(Point::new(self.x + 8, 3), Point::new(self.x + 10, 3))
-      .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
+      Text::new(
+        &format!("{}", output.step),
+        Point::new(cur_step_text_x, 23),
+        &SMALL_FONT,
+      )
+      .align(text_alignment)
       .draw(target)?;
-
-    RoundedRectangle::new(
-      Rectangle::new(Point::new(self.x, 22), Size::new(11, 9)),
-      CornerRadiiBuilder::new().all(Size::new(2, 2)).build(),
-    )
-    .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
-    .draw(target)?;
-
-    Text::new(
-      &format!("{}", self.output.step),
-      Point::new(self.x + 9, 23),
-      &SMALL_FONT,
-    )
-    .align(HorizontalAlignment::Right)
-    .draw(target)?;
+    }
 
     Ok(())
   }

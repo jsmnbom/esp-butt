@@ -96,6 +96,7 @@ impl HardwareCommunicationManager for BleCommunicationManager {
 
   fn start_scanning(&mut self) -> ButtplugResultFuture {
     self.scanning_status.store(true, Ordering::Relaxed);
+    self.peripherals.clear();
     Discovery::new(self)
       .filter_duplicates(false)
       .start();

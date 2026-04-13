@@ -5,11 +5,11 @@ from pathlib import Path
 import copy
 import subprocess
 from anytree import LevelOrderIter
-from build123d import Color, Compound, Compound, Location, Vector, export_step, import_step
+from build123d import Color, Compound, Compound, Face, Location, Vector, export_step, import_step
 from build123d.topology.shape_core import Shape, downcast
 from build123d.geometry import ColorLike
 
-__all__ = ["PCBCompound", "load_pcb", "fast_copy", "copy_located", "export"]
+__all__ = ["PCBCompound", "load_pcb", "fast_copy", "copy_located", "export", "import_step_colored"]
 
 KICAD_CLI = "kicad-cli"
 

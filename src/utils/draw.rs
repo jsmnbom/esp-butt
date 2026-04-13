@@ -40,6 +40,11 @@ impl<'a> Text<'a> {
     }
   }
 
+  pub fn vertical_pos(mut self, vertical_pos: VerticalPosition) -> Self {
+    self.vertical_pos = vertical_pos;
+    self
+  }
+
   pub fn align(mut self, horizontal_align: HorizontalAlignment) -> Self {
     self.horizontal_align = horizontal_align;
     self
@@ -86,10 +91,10 @@ impl Drawable for ControllerBattery {
   where
     D: DrawTarget<Color = Self::Color>,
   {
-    Rectangle::new(self.point, Size::new(8, 4))
+    Rectangle::new(self.point + Point::new(1, 0), Size::new(8, 4))
       .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
       .draw(target)?;
-    Line::new(self.point + Point::new(8, 1), self.point + Point::new(8, 2))
+    Line::new(self.point + Point::new(0, 1), self.point + Point::new(0, 2))
       .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
       .draw(target)?;
 

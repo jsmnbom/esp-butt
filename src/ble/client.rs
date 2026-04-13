@@ -84,10 +84,10 @@ impl Default for ConnectionParameters {
     Self {
       scan_interval: core::time::Duration::from_millis(100),
       scan_window: core::time::Duration::from_millis(50),
-      interval_min: core::time::Duration::from_millis(15),
-      interval_max: core::time::Duration::from_millis(30),
+      interval_min: core::time::Duration::from_millis(45),
+      interval_max: core::time::Duration::from_millis(45),
       latency: 0,
-      supervision_timeout: core::time::Duration::from_millis(2500),
+      supervision_timeout: core::time::Duration::from_millis(420),
       event_len_min: core::time::Duration::from_millis(5),
       event_len_max: core::time::Duration::from_millis(100),
     }
@@ -105,7 +105,7 @@ impl ClientConnector {
     Self {
       address,
       conn_params: ConnectionParameters::default(),
-      connect_timeout: core::time::Duration::from_secs(30),
+      connect_timeout: core::time::Duration::from_secs(10),
     }
   }
 

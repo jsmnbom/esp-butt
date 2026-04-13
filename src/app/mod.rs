@@ -1,9 +1,10 @@
 mod app;
 mod device;
-mod device_control;
-mod device_list;
+mod app_device_control;
+mod app_device_list;
+mod app_error;
 mod event;
-mod idle;
+mod app_idle;
 mod fonts;
 
 pub use app::*;
