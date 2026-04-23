@@ -1,0 +1,57 @@
+name: Firmware
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: esp-butt
+
+    steps:
+      - name: Check out esp-butt
+        uses: actions/checkout@v4
+        with:
+          path: esp-butt
+
+      # TODO: Once the buttplug fork is on GitHub, add a second checkout step
+      # so that the [patch.crates-io] path deps in Cargo.toml resolve correctly.
+      # The path "../buttplug/embedded2/..." is relative to the esp-butt directory,
+      # so the sibling repo must be checked out at the same level:
+      #
+      # - name: Check out buttplug
+      #   uses: actions/checkout@v4
+      #   with:
+      #     repository: <org>/buttplug
+      #     path: buttplug
+      #
+      # Until that step is added, cargo build will fail with a missing path error.
+
+      - name: Install Xtensa Rust toolchain
+        uses: esp-rs/xtensa-toolchain@v1
+        with:
+          version: 1.93.0.0
+          targets: esp32s3
+          default: true
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-${{ hashFiles('esp-butt/Cargo.lock') }}
+          restore-keys: cargo-
+
+      - name: Cache build artifacts
+        uses: actions/cache@v4
+        with:
+          path: esp-butt/target
+          key: target-esp32s3-${{ hashFiles('esp-butt/Cargo.lock') }}
+          restore-keys: target-esp32s3-
+
+      - name: Build firmware
+        run: cargo build --target xtensa-esp32s3-espidf
