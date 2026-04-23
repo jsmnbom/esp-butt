@@ -2,7 +2,7 @@ import os
 
 from .doc import export_gltf_doc, import_step_doc
 from .export import export
-from .kicad import PCBCompound, kicad_export_bom, load_pcb, load_pcb_doc
+from .kicad import PCBCompound, load_pcb, load_pcb_doc
 from .knurled_cylinder import KnurledCylinder
 from .utils import copy_located, fast_copy
 
@@ -18,7 +18,6 @@ __all__ = [
   "reset_show",
   "set_port",
   "set_viewer_config",
-  "kicad_export_bom",
   "import_step_doc",
   "export_gltf_doc",
   "load_pcb_doc",

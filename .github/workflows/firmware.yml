@@ -3,6 +3,16 @@ name: Firmware
 on:
   push:
     branches: [main]
+    paths:
+      - 'src/**'
+      - '.cargo/**'
+      - 'mini-oled/**'
+      - 'build.rs'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'sdkconfig.defaults'
+      - '.github/workflows/firmware.yml'
   workflow_dispatch:
 
 env:
@@ -17,11 +27,19 @@ jobs:
 
     steps:
       - name: Check out esp-butt
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: esp-butt
 
+      - name: Cache Xtensa Rust toolchain
+        id: cache-xtensa-toolchain
+        uses: actions/cache@v5
+        with:
+          path: ~/.rustup/toolchains/esp
+          key: xtensa-toolchain-1.93.0.0-${{ runner.os }}
+
       - name: Install espup and Xtensa Rust toolchain
+        if: steps.cache-xtensa-toolchain.outputs.cache-hit != 'true'
         working-directory: ${{ github.workspace }}
         run: |
           curl -LO "https://github.com/esp-rs/espup/releases/download/v0.17.1/espup-x86_64-unknown-linux-gnu"
@@ -30,7 +48,7 @@ jobs:
 
       - name: Cache ldproxy
         id: cache-ldproxy
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cargo/bin/ldproxy
           key: ldproxy-${{ runner.os }}
@@ -40,7 +58,7 @@ jobs:
         run: cargo install ldproxy
 
       - name: Cache Cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -48,8 +66,15 @@ jobs:
           key: cargo-${{ hashFiles('esp-butt/Cargo.lock') }}
           restore-keys: cargo-
 
+      - name: Cache ESP-IDF (.embuild)
+        uses: actions/cache@v5
+        with:
+          path: esp-butt/.embuild
+          key: embuild-${{ hashFiles('esp-butt/.cargo/config.toml') }}-${{ runner.os }}
+          restore-keys: embuild-
+
       - name: Cache build artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: esp-butt/target
           key: target-esp32s3-${{ hashFiles('esp-butt/Cargo.lock') }}
