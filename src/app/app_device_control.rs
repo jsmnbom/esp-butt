@@ -217,7 +217,7 @@ impl App {
     if let Some(battery) = device.battery() {
       DeviceBattery {
         point: Point::new(65, 46),
-        level: battery as u8,
+        level: battery.min(100) as u8,
       }
       .draw(screen)?;
     }
@@ -259,7 +259,7 @@ fn icon_for_output_type(
 }
 
 fn scale_slider_to_step(slider_value: u16, _step_count: u32, step_min: i32, step_max: i32) -> i32 {
-  let step_range = (step_max - step_min) as f64;
+  let step_range = step_max as f64 - step_min as f64;
   let scaled_value =
     (slider_value as f64 / hw::SLIDER_MAX_VALUE as f64) * step_range + (step_min as f64);
   scaled_value.round() as i32

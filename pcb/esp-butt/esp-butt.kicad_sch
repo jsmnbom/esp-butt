@@ -488,6 +488,128 @@
 			)
 			(embedded_fonts no)
 		)
+		(symbol "esp-butt:Battery"
+			(exclude_from_sim yes)
+			(in_bom yes)
+			(on_board no)
+			(in_pos_files no)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "BATT"
+				(at -0.254 0.762 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "3.7V LiPo 600mAH"
+				(at 0.508 -1.016 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
+		(symbol "esp-butt:OLED_128x64_1.3in_I2C"
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board no)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "D"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 		(symbol "esp-butt:OLED_128x64_1.3in_I2C_Socket"
 			(pin_names
 				(offset 1.016)
@@ -3086,7 +3208,7 @@
 	)
 	(wire
 		(pts
-			(xy 87.63 69.85) (xy 95.25 69.85)
+			(xy 96.52 67.31) (xy 104.14 67.31)
 		)
 		(stroke
 			(width 0)
@@ -3146,7 +3268,7 @@
 	)
 	(wire
 		(pts
-			(xy 87.63 72.39) (xy 87.63 69.85)
+			(xy 96.52 69.85) (xy 96.52 67.31)
 		)
 		(stroke
 			(width 0)
@@ -3466,7 +3588,7 @@
 	)
 	(wire
 		(pts
-			(xy 90.17 72.39) (xy 95.25 72.39)
+			(xy 99.06 69.85) (xy 104.14 69.85)
 		)
 		(stroke
 			(width 0)
@@ -3606,7 +3728,7 @@
 	)
 	(wire
 		(pts
-			(xy 90.17 74.93) (xy 95.25 74.93)
+			(xy 99.06 72.39) (xy 104.14 72.39)
 		)
 		(stroke
 			(width 0)
@@ -3935,7 +4057,7 @@
 		(uuid "5e93bdab-47bb-473c-8743-bc7def296840")
 	)
 	(label "SCL"
-		(at 90.17 72.39 0)
+		(at 99.06 69.85 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -4055,7 +4177,7 @@
 		(uuid "df7e6236-fd8a-4dcc-82a2-fdc656b760ed")
 	)
 	(label "SDA"
-		(at 90.17 74.93 0)
+		(at 99.06 72.39 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -4106,7 +4228,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 87.63 72.39 0)
+		(at 96.52 69.85 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -4117,7 +4239,7 @@
 		(fields_autoplaced yes)
 		(uuid "13fa7c57-775a-405a-be9c-306f49f5503e")
 		(property "Reference" "#PWR012"
-			(at 87.63 78.74 0)
+			(at 96.52 76.2 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -4128,7 +4250,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 87.63 77.47 0)
+			(at 96.52 74.93 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -4138,7 +4260,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 87.63 72.39 0)
+			(at 96.52 69.85 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -4149,7 +4271,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 87.63 72.39 0)
+			(at 96.52 69.85 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -4160,7 +4282,7 @@
 			)
 		)
 		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
-			(at 87.63 72.39 0)
+			(at 96.52 69.85 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -4184,7 +4306,7 @@
 	)
 	(symbol
 		(lib_id "power:+3.3V")
-		(at 95.25 67.31 0)
+		(at 104.14 64.77 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -4195,7 +4317,7 @@
 		(fields_autoplaced yes)
 		(uuid "1e12cd19-1c5c-43e9-8c63-2ef941d18d99")
 		(property "Reference" "#PWR011"
-			(at 95.25 71.12 0)
+			(at 104.14 68.58 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -4206,7 +4328,7 @@
 			)
 		)
 		(property "Value" "+3.3V"
-			(at 95.25 62.23 0)
+			(at 104.14 59.69 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -4216,7 +4338,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 95.25 67.31 0)
+			(at 104.14 64.77 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -4227,7 +4349,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 95.25 67.31 0)
+			(at 104.14 64.77 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -4238,7 +4360,7 @@
 			)
 		)
 		(property "Description" "Power symbol creates a global label with name \"+3.3V\""
-			(at 95.25 67.31 0)
+			(at 104.14 64.77 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -4418,6 +4540,102 @@
 		)
 	)
 	(symbol
+		(lib_id "esp-butt:OLED_128x64_1.3in_I2C")
+		(at 104.14 80.01 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board no)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "2282a413-ff35-4964-b88e-b262c7604756")
+		(property "Reference" "D1"
+			(at 105.41 79.248 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "1.3 inch OLED I2C 128 x 64"
+			(at 105.156 81.28 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 104.14 80.01 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 104.14 80.01 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 104.14 80.01 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Source_EU" "https://www.az-delivery.de/en/products/1-3zoll-i2c-oled-display,https://amzn.eu/d/03jmXnnH"
+			(at 104.14 80.01 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value_ALT" ""
+			(at 104.14 80.01 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "esp-butt"
+				(path "/2a87d9e9-94e6-4623-b98e-e8ee1a86509f"
+					(reference "D1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "Device:R")
 		(at 26.67 109.22 90)
 		(unit 1)
@@ -4483,6 +4701,28 @@
 			)
 		)
 		(property "MFN" "10k"
+			(at 26.67 109.22 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Source_US" ""
+			(at 26.67 109.22 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value_ALT" ""
 			(at 26.67 109.22 90)
 			(hide yes)
 			(show_name no)
@@ -4652,6 +4892,28 @@
 				)
 			)
 		)
+		(property "Source_US" ""
+			(at 99.06 29.21 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value_ALT" ""
+			(at 99.06 29.21 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(pin "2"
 			(uuid "a3f38010-2c83-4004-ab1e-b81e58b09a75")
 		)
@@ -4791,6 +5053,39 @@
 					(size 1.27 1.27)
 				)
 				(justify bottom)
+			)
+		)
+		(property "Source_EU" ""
+			(at 142.24 35.56 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Source_US" "https://www.digikey.dk/short/0qr8pj0r"
+			(at 142.24 35.56 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value_ALT" ""
+			(at 142.24 35.56 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
 			)
 		)
 		(pin "2"
@@ -4955,6 +5250,39 @@
 				)
 			)
 		)
+		(property "Source_EU" ""
+			(at 146.05 88.9 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Source_US" "https://www.digikey.dk/short/2qbtnbbv"
+			(at 146.05 88.9 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value_ALT" ""
+			(at 146.05 88.9 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(pin "2"
 			(uuid "2fc9f8ca-9bd7-42ea-a7a2-f53b87021125")
 		)
@@ -5039,6 +5367,28 @@
 				)
 			)
 		)
+		(property "Source_US" ""
+			(at 99.06 39.37 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value_ALT" ""
+			(at 99.06 39.37 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(pin "2"
 			(uuid "3bcfb6c8-b6c9-4fe7-8cd7-b70eee748703")
 		)
@@ -5110,6 +5460,28 @@
 			)
 		)
 		(property "Description" "Generic connector, single row, 01x02, script generated"
+			(at 109.22 40.64 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Source_US" ""
+			(at 109.22 40.64 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value_ALT" ""
 			(at 109.22 40.64 0)
 			(hide yes)
 			(show_name no)
@@ -5203,6 +5575,39 @@
 			)
 		)
 		(property "MFN" "1597-113991114-ND"
+			(at 41.91 49.53 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Source_EU" ""
+			(at 41.91 49.53 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Source_US" "https://www.digikey.dk/short/rv35rpwt"
+			(at 41.91 49.53 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value_ALT" ""
 			(at 41.91 49.53 0)
 			(hide yes)
 			(show_name no)
@@ -5375,6 +5780,39 @@
 				)
 			)
 		)
+		(property "Source_EU" ""
+			(at 21.59 113.03 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Source_US" "https://www.digikey.dk/short/hbr1hz4m"
+			(at 21.59 113.03 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value_ALT" "0,1μF"
+			(at 21.59 113.03 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(pin "1"
 			(uuid "8b95706d-8ede-42ea-86d8-9cd4489901ed")
 		)
@@ -5385,6 +5823,115 @@
 			(project "esp-butt"
 				(path "/2a87d9e9-94e6-4623-b98e-e8ee1a86509f"
 					(reference "C1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "esp-butt:Battery")
+		(at 102.87 16.51 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim yes)
+		(in_bom yes)
+		(on_board no)
+		(in_pos_files yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "56a21323-d0a2-45f9-a49d-2e6e91b16529")
+		(property "Reference" "BATT1"
+			(at 104.14 15.2399 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "3.7V LiPo 600mAH"
+			(at 104.14 17.7799 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 102.87 16.51 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 102.87 16.51 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 102.87 16.51 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Source_EU" "https://amzn.eu/d/01s3SsPl"
+			(at 102.87 16.51 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Source_US" ""
+			(at 102.87 16.51 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value_ALT" ""
+			(at 102.87 16.51 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "esp-butt"
+				(path "/2a87d9e9-94e6-4623-b98e-e8ee1a86509f"
+					(reference "BATT1")
 					(unit 1)
 				)
 			)
@@ -5699,6 +6246,28 @@
 				)
 			)
 		)
+		(property "Source_US" ""
+			(at 106.68 113.03 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value_ALT" ""
+			(at 106.68 113.03 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(pin "1"
 			(uuid "5bb27547-fac4-4556-b353-a00ed5f14d27")
 		)
@@ -5716,7 +6285,7 @@
 	)
 	(symbol
 		(lib_id "esp-butt:OLED_128x64_1.3in_I2C_Socket")
-		(at 100.33 69.85 0)
+		(at 109.22 67.31 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -5726,7 +6295,7 @@
 		(dnp no)
 		(uuid "991bb28a-1081-4c7b-ab24-3d64ea9eed1d")
 		(property "Reference" "J1"
-			(at 101.6 64.77 0)
+			(at 110.49 62.23 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -5736,7 +6305,7 @@
 			)
 		)
 		(property "Value" "1x04_P2.54mm"
-			(at 102.87 77.47 0)
+			(at 111.76 74.93 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -5746,7 +6315,7 @@
 			)
 		)
 		(property "Footprint" "esp-butt:OLED_128x64_1.3in_I2C_Socket_Vertical"
-			(at 100.33 69.85 0)
+			(at 109.22 67.31 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -5757,7 +6326,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 100.33 69.85 0)
+			(at 109.22 67.31 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -5768,7 +6337,40 @@
 			)
 		)
 		(property "Description" ""
-			(at 100.33 69.85 0)
+			(at 109.22 67.31 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Source_EU" ""
+			(at 109.22 67.31 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Source_US" "https://www.digikey.dk/short/pz373nw5"
+			(at 109.22 67.31 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value_ALT" ""
+			(at 109.22 67.31 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -6033,6 +6635,39 @@
 				)
 			)
 		)
+		(property "Source_EU" ""
+			(at 113.03 118.11 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Source_US" "https://www.digikey.dk/short/v7fv0pbn"
+			(at 113.03 118.11 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value_ALT" "10000pF"
+			(at 113.03 118.11 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(pin "2"
 			(uuid "5920a87d-8160-402c-a5f9-98491854d341")
 		)
@@ -6202,6 +6837,28 @@
 				)
 			)
 		)
+		(property "Source_US" ""
+			(at 31.75 104.14 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value_ALT" ""
+			(at 31.75 104.14 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(pin "2"
 			(uuid "c1dfe132-aa23-410c-bbfd-dbe127653184")
 		)
@@ -6285,6 +6942,39 @@
 			)
 		)
 		(property "MFN" "10nF"
+			(at 46.99 113.03 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Source_EU" ""
+			(at 46.99 113.03 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Source_US" "https://www.digikey.dk/short/hbr1hz4m"
+			(at 46.99 113.03 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value_ALT" "0,1μF"
 			(at 46.99 113.03 0)
 			(hide yes)
 			(show_name no)
@@ -6523,6 +7213,39 @@
 				)
 			)
 		)
+		(property "Source_EU" ""
+			(at 146.05 68.58 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Source_US" "https://www.digikey.dk/short/2qbtnbbv"
+			(at 146.05 68.58 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value_ALT" ""
+			(at 146.05 68.58 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(pin "2"
 			(uuid "ea1b49ee-1af9-4391-b270-95c14602f044")
 		)
@@ -6618,6 +7341,28 @@
 				)
 			)
 		)
+		(property "Source_US" ""
+			(at 41.91 109.22 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value_ALT" ""
+			(at 41.91 109.22 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(pin "2"
 			(uuid "9df6a6d3-8dfd-4aa5-9466-81314da8f553")
 		)
@@ -6698,6 +7443,28 @@
 			)
 		)
 		(property "MFN" "10k"
+			(at 113.03 106.68 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Source_US" ""
+			(at 113.03 106.68 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value_ALT" ""
 			(at 113.03 106.68 90)
 			(hide yes)
 			(show_name no)
@@ -7004,6 +7771,39 @@
 				)
 			)
 		)
+		(property "Source_EU" ""
+			(at 87.63 109.22 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Source_US" "https://www.digikey.dk/short/bdcwrr3h"
+			(at 87.63 109.22 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value_ALT" ""
+			(at 87.63 109.22 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(pin "1"
 			(uuid "dea04ec4-f1d2-4625-a3b9-83f7b8dcbeb8")
 		)
@@ -7101,6 +7901,28 @@
 			)
 		)
 		(property "MFN" "10k"
+			(at 36.83 104.14 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Source_US" ""
+			(at 36.83 104.14 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value_ALT" ""
 			(at 36.83 104.14 90)
 			(hide yes)
 			(show_name no)
@@ -7369,17 +8191,16 @@
 		(file
 			(name "sheet.kicad_wks")
 			(type worksheet)
-			(data |KLUv/WCDBbUOACbXSCAQsx78Pxbzi1rRSVz9WuboYJiCK4gFlkCqkyICANTIQT8APQA9ADB25bWq
-				8VvtRKFs79TuN/4SBEUc5r2LsHrWy/ir5pblXmf8V/brFAmKJoKUkppx9sW1y56RoKi7aCztyupF
-				Cu2Vb+1icL769V/fNpzFGOGsoGzt+pyRwqorQgDSQX++vnuvfbvuZ543/I8xDn+FUnOUfSslX5v1
-				E7cTlQGT+h3GQmdLA2fSjhiGRUlJ0MUT2XR2h7knX//GH3saKTo70mjibHJ2a//lnHfMfjPO3nbs
-				+C4Ztli7/foB0RRNggrSmVV7fe1p9pxwkGBEFBG3XyOaxVhPhSTx8AC6kPHH64UAUk0Hn4ZDAXkk
-				JBbCcFAsPIAZJ805c7L/9aw5AUogYETEDFZjVmUTSAgPw2AUiFmTAWp1k0Av6/pBBa+r7Vl19pSk
-				MCbWtUJyAdW3gm8ktqxkASE3MNPlUdYnCF3hg6rMmeTvgMeWWB5h+E2cM0kevX7sxLEvCbrhcAbL
-				3vgmhmcNKDJHh7AFclsMshmB+7jiHoVXAIlBftkzb/6AZHJ7KShwBjcveezhYV+74KS30NIGK0CP
-				Uu3GEQn7pWoJWFJFHOIK5nZJS1zjA0MB|
+			(data |KLUv/WDyBJUNANYVRCAwkR4MpTXXlY2CmKe//xzWojfaUJkzKYVtTxQ0VP4BBjsAOQA4ABPjdVJJ
+				Psi+mdtn/KPngTTL+9avoaPctT8xp6jm+NqvrleXRA8kESCEU+zI1c7t+iV6oK2CobDqmpUo9lbs
+				+Ktnmb06Fh5krHqM3U/ABULgyQH/rX5zjj2r6l9+M/tvLc3+RDJvQ65TcquM+ohTScLXPHksktuy
+				rIZT9FQbgSwjb1Zz0PFn/K2XPcnILSFJk7lXnfyVa859vV57PeXmdpXLUoud/nz2yTNWLQGQBEmC
+				WHgyXpNWP1mKHGP3YIBQPBIPpz8fGLUWC97UWTASjgQE0eAA2HDxxr1Xc/2rX6yJzN8sFBkZHjQx
+				QyCARMTmqg7EpA0fE48gbpjtAqGSZHAVq24O9NKuFbYYdAhcgQk00UtQ1icEXeEAVZmY5HfOYyWW
+				hDB8EudOkqK3j5127HuCLhzTYLQ3nonhWAOSzNEjbInc1gbZjcB7XHGPQiqAtEFw2Tdv9oDk5/Ze
+				UOAObl4yTARcFMylCy57iyxtvgLcUcpuHJEwL9VOwApVXCGOYL9XNQhmfJg9|
 			)
-			(checksum "42367ADED120E351CD4A09D2B2F7B5E6")
+			(checksum "B1BFB56CFF4C2A77097AD044741CDB3E")
 		)
 	)
 )

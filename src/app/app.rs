@@ -50,6 +50,9 @@ pub struct App {
   current_device_index: Option<usize>,
   /// Controller's own battery level (0–100). Updated on every Tick from ADC.
   self_battery: u8,
+  /// Last raw ADC value used to compute self_battery. Used for hysteresis.
+  #[cfg(target_os = "espidf")]
+  battery_raw_last: u16,
   tx: broadcast::Sender<AppEvent>,
   draw_pending: Cell<bool>,
 }
@@ -70,6 +73,8 @@ impl App {
       devices: Vec::new(),
       current_device_index: None,
       self_battery: 0,
+      #[cfg(target_os = "espidf")]
+      battery_raw_last: 0,
       tx,
       draw_pending: Cell::new(false),
     }
@@ -450,15 +455,23 @@ impl App {
 
     #[cfg(target_os = "espidf")]
     {
+      // Hysteresis: only recompute when raw ADC moves by more than the threshold.
+      // This prevents oscillation at percentage boundaries due to ADC noise.
+      const BATTERY_HYSTERESIS: u16 = 8;
       let raw = self.adc.battery_raw();
-      // V_BAT_mV ≈ raw * 6200 / 4095  (db12 full-scale ~3100 mV, ×2 voltage divider)
-      let v_bat_mv = raw as u32 * 6200 / 4095;
-      // LiPo: 3000 mV (0%) – 4200 mV (100%)
-      let pct = ((v_bat_mv.saturating_sub(3000)) * 100 / 1200).min(100) as u8;
-      if pct != self.self_battery {
+      if raw.abs_diff(self.battery_raw_last) > BATTERY_HYSTERESIS {
+        self.battery_raw_last = raw;
+        log::info!("Battery raw ADC value: {}", raw);
+        // Two-point calibration: raw 1815 → 3080 mV, raw 2420 → 4180 mV
+        // slope = 20/11 mV/count, offset = -220 mV
+        let v_bat_mv = (raw as u32 * 20 / 11).saturating_sub(220);
+        // LiPo: 3000 mV (0%) – 4200 mV (100%)
+        let pct = ((v_bat_mv.saturating_sub(3000)) * 100 / 1200).min(100) as u8;
         log::debug!("Battery: raw={} v_bat={}mV pct={}%", raw, v_bat_mv, pct);
-        self.self_battery = pct;
-        any_changed = true;
+        if pct != self.self_battery {
+          self.self_battery = pct;
+          any_changed = true;
+        }
       }
     }
 

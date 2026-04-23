@@ -126,7 +126,7 @@ impl AdcInputs {
   }
 
   /// Returns the latest raw 12-bit ADC reading from the battery voltage divider.
-  /// V_BAT ≈ raw * 6200 / 4095 mV  (db12 ≈ 3100 mV full-scale, ×2 divider).
+  /// V_BAT ≈ raw * 20 / 11 - 220 mV  (two-point calibrated: raw 1815 → 3080 mV, raw 2420 → 4180 mV).
   pub fn battery_raw(&self) -> u16 {
     self.battery_raw.load(Ordering::Acquire)
   }

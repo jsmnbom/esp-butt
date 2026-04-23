@@ -1,0 +1,8 @@
+{
+  "rust-analyzer.cargo.target": "xtensa-esp32s3-espidf",
+  // "rust-analyzer.cargo.target": "x86_64-unknown-linux-gnu",
+  "ruff.lint.enable": false,
+  "python.languageServer": "Pylance",
+  "rust-analyzer.cargo.allTargets": false,
+  "rust-analyzer.lens.enable": false,
+}

@@ -4,7 +4,14 @@ version = "0.1.0"
 description = ""
 readme = "README.md"
 requires-python = "==3.13.*"
-dependencies = ["pip>=26.0.1"]
+dependencies = [
+  "pip>=26.0.1",
+  "jupyter",
+  "ocp_vscode",
+  "build123d@git+https://github.com/gumyr/build123d@11a017ead7508b7031b4acb75f026776586702ac",
+  "ocp-tessellate",
+  "import_ipynb"
+]
 
 [tool.ruff]
 line-length = 100

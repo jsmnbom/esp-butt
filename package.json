@@ -1,0 +1,23 @@
+{
+  "name": "esp-butt-docs",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
+  },
+  "devDependencies": {
+    "@iconify-json/circle-flags": "^1.2.10",
+    "@iconify-json/mdi": "^1.2.3",
+    "@types/node": "^25.6.0",
+    "@types/three": "^0.183.1",
+    "unplugin-icons": "^23.0.1",
+    "vitepress": "^1.6.3"
+  },
+  "dependencies": {
+    "@tresjs/cientos": "^5.7.0",
+    "@tresjs/core": "^5.8.0",
+    "three": "^0.183.2"
+  }
+}

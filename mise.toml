@@ -1,2 +1,88 @@
 [env]
 ESP_IDF_TOOLS_INSTALL_DIR = "custom:/home/jas/dev/embedded/espressif"
+
+[tools]
+bun = "latest"
+
+# ---------------------------------------------------------------------------
+# Docs
+# ---------------------------------------------------------------------------
+
+[tasks."docs:dev"]
+description = "Start VitePress dev server"
+run = "bun run docs:dev"
+
+[tasks."docs:build"]
+description = "Build VitePress static site"
+run = "bun run docs:build"
+
+[tasks."docs:preview"]
+description = "Preview built VitePress site"
+run = "bun run docs:preview"
+
+# ---------------------------------------------------------------------------
+# ESP32-S3 firmware
+# ---------------------------------------------------------------------------
+
+[tasks."esp:run"]
+description = "Flash and monitor ESP32-S3 firmware (debug)"
+run = "cargo +esp run --target xtensa-esp32s3-espidf"
+
+[tasks."esp:build"]
+description = "Build ESP32-S3 firmware (debug)"
+run = "cargo +esp build --target xtensa-esp32s3-espidf"
+
+[tasks."esp:check"]
+description = "Check ESP32-S3 firmware"
+run = "cargo +esp check --target xtensa-esp32s3-espidf"
+
+# ---------------------------------------------------------------------------
+# Desktop / mock UI
+# ---------------------------------------------------------------------------
+
+[tasks."desktop:run"]
+description = "Run desktop mock UI (debug)"
+run = "cargo run --target x86_64-unknown-linux-gnu"
+
+[tasks."desktop:run:export"]
+description = "Run desktop mock UI with frame export enabled"
+run = "ESP_BUTT_EXPORT_FRAMES=1 cargo run --target x86_64-unknown-linux-gnu"
+
+[tasks."desktop:build"]
+description = "Build desktop mock UI (debug)"
+run = "cargo build --target x86_64-unknown-linux-gnu"
+
+[tasks."desktop:check"]
+description = "Check desktop mock UI"
+run = "cargo check --target x86_64-unknown-linux-gnu"
+
+# ---------------------------------------------------------------------------
+# Size report
+# ---------------------------------------------------------------------------
+
+[tasks."size"]
+description = "Run linker-map size report (pass map path as arg, or uses default)"
+run = "python size_report.py"
+
+# ---------------------------------------------------------------------------
+# Dev setup
+# ---------------------------------------------------------------------------
+
+[tasks."setup"]
+description = "Bootstrap Python venv, patch pyvenv.cfg for ocp-cad-viewer, install bun deps"
+run = """
+set -euo pipefail
+
+# Install Python deps via lock file (creates / updates .venv, writes pyvenv.cfg)
+uv sync
+
+# Remove uv-specific lines from pyvenv.cfg so bernhard-42.ocp-cad-viewer
+# treats it as a plain venv (otherwise the extension refuses to activate it).
+cfg=".venv/pyvenv.cfg"
+if [ -f "$cfg" ]; then
+  sed -i '/^uv = /d' "$cfg"
+fi
+
+# Install Node/bun deps
+bun install
+"""

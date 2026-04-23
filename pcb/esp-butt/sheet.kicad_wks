@@ -1,7 +1,7 @@
 (kicad_wks
 	(version 20231118)
 	(generator "pl_editor")
-	(generator_version "9.0")
+	(generator_version "10.0")
 	(setup
 		(textsize 1.5 1.5)
 		(linewidth 0.15)
@@ -13,7 +13,7 @@
 	)
 	(rect
 		(name "")
-		(start 75.489 9.5022)
+		(start 75.489 6.0022)
 		(end 1.989 2.0002)
 		(comment "rect around the title block")
 	)
@@ -91,16 +91,6 @@
 		(repeat 100)
 		(incry 50)
 	)
-	(line
-		(name "")
-		(start 75.489 5.5022)
-		(end 2 5.5002)
-	)
-	(tbtext "${KICAD_VERSION}"
-		(name "")
-		(pos 75 3.6)
-		(comment "Kicad version")
-	)
 	(tbtext "Rev: ${REVISION}"
 		(name "")
 		(pos 25 3.6)
@@ -108,13 +98,13 @@
 	)
 	(tbtext "Title: ${TITLE}"
 		(name "")
-		(pos 75 7.2)
+		(pos 75 3.7002)
 		(font
 			(size 2 2) bold italic)
 	)
 	(line
 		(name "")
-		(start 25.989 5.5022)
+		(start 25.989 6.0022)
 		(end 26 2.0002)
 	)
 )

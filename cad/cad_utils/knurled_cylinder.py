@@ -22,13 +22,14 @@ from build123d import (
 from build123d.build_common import validate_inputs
 from build123d.topology.shape_core import Shape, downcast, get_top_level_topods_shapes
 from build123d.topology.utils import tuplify
-from cad_utils import fast_copy
 from OCP.BRepAlgoAPI import BRepAlgoAPI_Splitter
+from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace
 from OCP.gp import gp_Trsf, gp_Vec
 from OCP.TopLoc import TopLoc_Location
 from OCP.TopoDS import TopoDS_Shape, TopoDS_Wire
 from OCP.TopTools import TopTools_ListOfShape
-from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace
+
+from .utils import fast_copy
 
 # %%
 
@@ -109,7 +110,9 @@ class KnurledCylinder(BasePartObject):
       align=(Align.CENTER, Align.CENTER, Align.MIN),
       mode=Mode.PRIVATE,
     ).rotate(Axis.Z, 180)
-    self.base_outer_cylinder_face = self.base_outer_cylinder.faces().filter_by(GeomType.CYLINDER).first
+    self.base_outer_cylinder_face = (
+      self.base_outer_cylinder.faces().filter_by(GeomType.CYLINDER).first
+    )
 
     self.base_inner_cylinder = Cylinder(
       self.cylinder_radius - self.inset,
@@ -117,7 +120,9 @@ class KnurledCylinder(BasePartObject):
       align=(Align.CENTER, Align.CENTER, Align.MIN),
       mode=Mode.PRIVATE,
     ).rotate(Axis.Z, 180)
-    self.base_inner_cylinder_face = self.base_inner_cylinder.faces().filter_by(GeomType.CYLINDER).first
+    self.base_inner_cylinder_face = (
+      self.base_inner_cylinder.faces().filter_by(GeomType.CYLINDER).first
+    )
 
     solid = self.create_solid()
 
@@ -154,7 +159,7 @@ class KnurledCylinder(BasePartObject):
         self.outer_faces.append(
           z_rot_offset(cylinder_outer_face, base_angle + angle_offset, z_offset)
         )
-  
+
   def build_bottom_top_faces(self):
     cylinder_outer_face_bottom = self.get_outer_face(bottom=True)
     cylinder_outer_face_top = self.get_outer_face(top=True)
@@ -210,7 +215,9 @@ class KnurledCylinder(BasePartObject):
 
   def get_cylinder_face_piece(self, wire: TopoDS_Wire, inner=False):
     splitter = BRepAlgoAPI_Splitter()
-    splitter.SetArguments(list_of_shape([self.base_inner_cylinder_face if inner else self.base_outer_cylinder_face]))
+    splitter.SetArguments(
+      list_of_shape([self.base_inner_cylinder_face if inner else self.base_outer_cylinder_face])
+    )
     splitter.SetTools(list_of_shape([wire]))
     splitter.Build()
 
@@ -262,6 +269,7 @@ class KnurledCylinder(BasePartObject):
       face = face.mirror(Plane.XY)
       face = z_rot_offset(face, 0, self.cylinder_height)
     return face
+
 
 if __name__ == "__main__":
   KnurledCylinder(
