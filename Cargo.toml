@@ -104,13 +104,10 @@ esp_idf_components = [
 ]
 
 [patch.crates-io]
-buttplug_core = { path = "../buttplug/embedded2/crates/buttplug_core" }
-buttplug_client = { path = "../buttplug/embedded2/crates/buttplug_client" }
-buttplug_server = { path = "../buttplug/embedded2/crates/buttplug_server" }
-buttplug_server_device_config = { path = "../buttplug/embedded2/crates/buttplug_server_device_config" }
-buttplug_client_in_process = { path = "../buttplug/embedded2/crates/buttplug_client_in_process" }
-buttplug_server_hwmgr_btleplug = { path = "../buttplug/embedded2/crates/buttplug_server_hwmgr_btleplug" }
-# esp-idf-sys = { git = "https://github.com/esp-rs/esp-idf-sys", rev = "64667a38fb8004e1fc3b032488af6857ca3cd849" }
-# esp-idf-hal = { git = "https://github.com/esp-rs/esp-idf-hal", rev = "c42c95968fb0d2d0b3ca5c0e743d22fc87018f1c" }
-# esp-idf-svc = { git = "https://github.com/esp-rs/esp-idf-svc", rev = "dee202f146c7681e54eabbf118a216fc0195d203" }
-mini-oled = { path = "mini-oled" }
+buttplug_core = { git = "https://github.com/jsmnbom/buttplug.git", branch = "esp-butt" }
+buttplug_client = { git = "https://github.com/jsmnbom/buttplug.git", branch = "esp-butt" }
+buttplug_server = { git = "https://github.com/jsmnbom/buttplug.git", branch = "esp-butt" }
+buttplug_server_device_config = { git = "https://github.com/jsmnbom/buttplug.git", branch = "esp-butt" }
+buttplug_client_in_process = { git = "https://github.com/jsmnbom/buttplug.git", branch = "esp-butt" }
+buttplug_server_hwmgr_btleplug = { git = "https://github.com/jsmnbom/buttplug.git", branch = "esp-butt" }
+mini-oled = { git = "https://github.com/jsmnbom/mini-oled.git", branch = "add-set-contrast" }
