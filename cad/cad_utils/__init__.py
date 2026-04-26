@@ -1,6 +1,6 @@
 import os
 
-from .doc import export_gltf_doc, import_step_doc
+from .doc import export_gltf_doc, import_step_doc, new_xcaf_doc, copy_doc_free_shapes
 from .export import export
 from .kicad import PCBCompound, load_pcb, load_pcb_doc
 from .knurled_cylinder import KnurledCylinder
@@ -21,6 +21,8 @@ __all__ = [
   "import_step_doc",
   "export_gltf_doc",
   "load_pcb_doc",
+  "new_xcaf_doc",
+  "copy_doc_free_shapes",
 ]
 
 BUILDING_DOCS = bool(os.getenv("BUILDING_DOCS"))

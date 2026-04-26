@@ -787,6 +787,12 @@
           "label": "Source_US",
           "name": "Source_US",
           "show": true
+        },
+        {
+          "group_by": false,
+          "label": "Value_ALT",
+          "name": "Value_ALT",
+          "show": false
         }
       ],
       "filter_string": "",
@@ -794,7 +800,7 @@
       "include_excluded_from_bom": true,
       "name": "",
       "sort_asc": true,
-      "sort_field": "Reference"
+      "sort_field": "Value_ALT"
     },
     "bus_aliases": {},
     "connection_grid_size": 50.0,

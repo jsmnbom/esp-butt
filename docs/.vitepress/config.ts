@@ -43,6 +43,10 @@ export default defineConfig({
     socialLinks: [
       { icon: "github", link: "https://github.com/jsmnbom/esp-butt" },
     ],
+
+    search: {
+      provider: 'local'
+    }
   },
 
   vue: {

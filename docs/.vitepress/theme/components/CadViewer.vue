@@ -7,6 +7,7 @@ import CadScene from "./CadScene.vue";
 const props = defineProps<{
   url: string;
   height?: number;
+  animate?: boolean;
 }>();
 
 const { isDark } = useData();
@@ -30,7 +31,7 @@ const isHovered = ref(false);
     <TresCanvas :clear-color="clearColor" :window-size="false" :tone-mapping="1" :tone-mapping-exposure="1" :shadows="true">
       <TresPerspectiveCamera :position="[1, 1, 1]" :look-at="[0, 0, 0]" :near="0.001" :far="100000" />
       <Suspense>
-        <CadScene :url="url" />
+        <CadScene :url="url" :animate="animate" />
       </Suspense>
     </TresCanvas>
     <div class="cad-viewer-hint" :class="{ visible: isHovered }">

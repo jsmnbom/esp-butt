@@ -361,6 +361,7 @@ dependencies = [
     { name = "jupyter" },
     { name = "ocp-tessellate" },
     { name = "ocp-vscode" },
+    { name = "pillow" },
     { name = "pip" },
 ]
 
@@ -371,6 +372,7 @@ requires-dist = [
     { name = "jupyter" },
     { name = "ocp-tessellate" },
     { name = "ocp-vscode" },
+    { name = "pillow" },
     { name = "pip", specifier = ">=26.0.1" },
 ]
 

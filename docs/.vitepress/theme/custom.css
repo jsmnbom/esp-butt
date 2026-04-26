@@ -1,11 +1,5 @@
 :root {
   --vp-layout-max-width: 1280px;
-  --vp-z-index-footer: 10;
-  --vp-z-index-local-nav: 200;
-  --vp-z-index-nav: 300;
-  --vp-z-index-layout-top: 400;
-  --vp-z-index-backdrop: 500;
-  --vp-z-index-sidebar: 600;
 }
 
 .VPDoc:not(.has-sidebar) .container {

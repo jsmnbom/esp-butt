@@ -17,9 +17,20 @@ from .utils import fast_copy
 KICAD_CLI = os.getenv("KICAD_CLI", "kicad-cli")
 
 
-def kicad_run_pcb_export(pcb_path: str | Path, export_format: str, output: str | Path, *args, export_type="pcb"):
+def kicad_run_pcb_export(
+  pcb_path: str | Path, export_format: str, output: str | Path, *args, export_type="pcb"
+):
   p = subprocess.run(
-    [KICAD_CLI, export_type, "export", export_format, "--output", str(output), *args, str(pcb_path)],
+    [
+      KICAD_CLI,
+      export_type,
+      "export",
+      export_format,
+      "--output",
+      str(output),
+      *args,
+      str(pcb_path),
+    ],
     capture_output=True,
   )
   if p.returncode != 0:
@@ -33,8 +44,9 @@ def kicad_export_step(pcb_path: str | Path, output: str | Path):
     "step",
     output,
     "--force",
-    "--subst-models",
+    "--no-optimize-step",
     "--include-silkscreen",
+    "--drill-origin",
   )
 
 
@@ -43,6 +55,7 @@ def kicad_export_pos(pcb_path: str | Path, output: str | Path):
     pcb_path,
     "pos",
     output,
+    "--use-drill-file-origin",
     "--side",
     "both",
     "--format",
@@ -90,7 +103,7 @@ class PCBCompound(Compound):
     step_path = export_dir / f"{name}.step"
     pos_path = export_dir / f"{name}.pos.csv"
 
-    renames['PCB'] = 'pcb'
+    renames["PCB"] = "pcb"
 
     if kicad_is_export_needed(pcb_dir, [step_path, pos_path]):
       kicad_export_step(pcb_path, step_path)
@@ -128,13 +141,16 @@ class PCBCompound(Compound):
         return c
     raise ValueError(f"Top level node with label '{name}' not found")
 
-  def find(self, prefix, copy=True) -> Shape:
+  def find(self, *prefix, copy=True) -> Shape:
     for c in LevelOrderIter(self):
-      if c.label.startswith(prefix):
+      if c.label.startswith(prefix[0]):
         if copy:
           c = fast_copy(c)
           c.locate(c.global_location)
-        return c
+        if len(prefix) == 1:
+          return c
+        else:
+          return PCBCompound.find(c, *prefix[1:], copy=copy)
     raise ValueError(f"Node with label starting with '{prefix}' not found")
 
   def apply_renames(self, renames: dict[str, str]):
@@ -161,6 +177,7 @@ def load_pcb(
   colors: dict[str, ColorLike] = {},
 ) -> PCBCompound:
   return PCBCompound.load_pcb(name, pcb_path, pcb_export_dir, renames, colors)
+
 
 def load_pcb_doc(
   name: str,

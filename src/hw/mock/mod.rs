@@ -1,6 +1,6 @@
 mod display;
 
-use std::{io, thread, time::Duration};
+use std::{io, path::PathBuf, thread, time::Duration};
 
 use anyhow::Context;
 use futures::Stream;
@@ -53,6 +53,13 @@ impl HardwareMock {
     let submit_frame_tx = frame_tx.clone();
 
     Self::spawn_ticker_task(input_tx.clone());
+
+    if std::env::var_os("ESP_BUTT_RECORD_SESSION").is_some() {
+      let record_path = std::env::temp_dir().join("esp-butt-session.ndjson");
+      log::info!("Recording session to {}", record_path.display());
+      Self::spawn_recorder_task(record_path, input_tx.subscribe(), frame_rx.clone());
+    }
+
     Self::spawn_ui_task(input_tx.clone(), frame_rx)?;
 
     Ok(Self {
@@ -94,6 +101,99 @@ impl HardwareMock {
       },
       c"mock-ticker",
       2048,
+      utils::task::Core::App,
+      1,
+    );
+  }
+
+  fn spawn_recorder_task(
+    record_path: PathBuf,
+    mut event_rx: broadcast::Receiver<AppEvent>,
+    mut frame_rx: watch::Receiver<Vec<u8>>,
+  ) {
+    use std::io::Write as _;
+    use std::time::Instant;
+
+    utils::task::spawn(
+      async move {
+        let frames_dir = std::env::temp_dir().join("esp-butt-record-frames");
+
+        if frames_dir.exists() {
+          if let Err(err) = std::fs::remove_dir_all(&frames_dir) {
+            log::error!("recorder: failed to clear frames dir: {err}");
+            return;
+          }
+        }
+        if let Err(err) = std::fs::create_dir_all(&frames_dir) {
+          log::error!("recorder: failed to create frames dir: {err}");
+          return;
+        }
+        log::info!("recorder: frames → {}", frames_dir.display());
+
+        let file = match std::fs::File::create(&record_path) {
+          Ok(f) => f,
+          Err(err) => {
+            log::error!("recorder: failed to open record file: {err}");
+            return;
+          }
+        };
+
+        let mut writer = std::io::BufWriter::new(file);
+        let start = Instant::now();
+        let mut frame_num = 0u32;
+
+        loop {
+          tokio::select! {
+            result = event_rx.recv() => {
+              let t = start.elapsed().as_secs_f64();
+              match result {
+                Err(broadcast::error::RecvError::Closed) => break,
+                Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Ok(AppEvent::Quit) => {
+                  let _ = writer.flush();
+                  break;
+                }
+                Ok(AppEvent::Navigation(nav)) => {
+                  let nav_str = match nav {
+                    NavigationEvent::Up => "Up",
+                    NavigationEvent::Down => "Down",
+                    NavigationEvent::Select => "Select",
+                  };
+                  let _ = writeln!(writer, r#"{{"t":{t:.3},"type":"nav","event":"{nav_str}"}}"#);
+                }
+                Ok(AppEvent::Slider(SliderEvent::Changed(idx, val))) => {
+                  let _ = writeln!(
+                    writer,
+                    r#"{{"t":{t:.3},"type":"slider","index":{idx},"value":{val}}}"#
+                  );
+                }
+                _ => {}
+              }
+            }
+            Ok(()) = frame_rx.changed() => {
+              let t = start.elapsed().as_secs_f64();
+              let frame = frame_rx.borrow_and_update().clone();
+              frame_num += 1;
+              let filename = format!("frame_{frame_num:05}.png");
+              let img = frame_to_image(&frame);
+              let frame_path = frames_dir.join(&filename);
+              if let Err(err) = img.save(&frame_path) {
+                log::warn!("recorder: failed to save frame: {err}");
+              } else {
+                let _ = writeln!(
+                  writer,
+                  r#"{{"t":{t:.3},"type":"frame","file":"{filename}"}}"#
+                );
+              }
+            }
+            else => break,
+          }
+        }
+
+        log::info!("recorder: finished ({frame_num} frames)");
+      },
+      c"recorder",
+      16384,
       utils::task::Core::App,
       1,
     );

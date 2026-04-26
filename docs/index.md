@@ -16,3 +16,16 @@ hero:
       text: GitHub
       link: https://github.com/jsmnbom/esp-butt
 ---
+
+<script setup>
+import { withBase } from 'vitepress'
+</script>
+
+<ClientOnly>
+  <HeroViewer
+    :primaryUrl="withBase('/models/printed_parts.glb')"
+    :secondaryUrl="withBase('/models/pcb.glb')"
+    :recordingUrl="withBase('/models/recording.json')"
+    :height="500"
+  />
+</ClientOnly>

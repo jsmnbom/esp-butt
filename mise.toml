@@ -48,6 +48,10 @@ run = "cargo run --target x86_64-unknown-linux-gnu"
 description = "Run desktop mock UI with frame export enabled"
 run = "ESP_BUTT_EXPORT_FRAMES=1 cargo run --target x86_64-unknown-linux-gnu"
 
+[tasks."desktop:run:record"]
+description = "Run desktop mock UI with recording enabled"
+run = "ESP_BUTT_RECORD_SESSION=1 cargo run --target x86_64-unknown-linux-gnu"
+
 [tasks."desktop:build"]
 description = "Build desktop mock UI (debug)"
 run = "cargo build --target x86_64-unknown-linux-gnu"

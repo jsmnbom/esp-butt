@@ -14,6 +14,7 @@ Steps:
 """
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -27,6 +28,7 @@ MODELS_DIR = DOCS_PUBLIC / "models"
 SVG_DIR = REPO_ROOT / "docs" / "svg"
 CAD_DIR = REPO_ROOT / "cad"
 PCB_DIR = REPO_ROOT / "pcb"
+RECORDING_DIR = REPO_ROOT / "docs" / "recording"
 
 PCB_NAME = "esp-butt"
 DARK_THEME = "witchhazel"
@@ -34,7 +36,7 @@ DARK_THEME = "witchhazel"
 PCB_FRONT_LAYERS = "F.Cu,F.Mask,F.Silkscreen,Edge.Cuts"
 PCB_BACK_LAYERS = "B.Cu,B.Mask,B.Silkscreen,Edge.Cuts"
 
-ALL_STEPS = ["cad", "pcb", "bom", "svg"]
+ALL_STEPS = ["cad", "pcb", "bom", "svg", "animation"]
 
 KICAD_CLI = os.getenv("KICAD_CLI", "kicad-cli")
 INKSCAPE = os.getenv("INKSCAPE", "inkscape")
@@ -137,7 +139,7 @@ def step_pcb() -> None:
 
   print(f"  {PCB_NAME}.glb...")
   pcb_doc = load_pcb_doc(PCB_NAME, PCB_DIR / PCB_NAME, PCB_DIR / "export")
-  export_gltf_doc(pcb_doc, MODELS_DIR / "pcb.glb")
+  export_gltf_doc(pcb_doc, MODELS_DIR / "pcb.glb", scale=100)
 
 
 def step_bom() -> None:
@@ -230,10 +232,80 @@ def step_svg() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Step: animation
+# ---------------------------------------------------------------------------
+
+_FRAME_W = 128
+_FRAME_H = 64
+_MAX_ATLAS_DIM = 4096
+
+
+def step_animation() -> None:
+  """Build screen-atlas.png and recording.json from docs/recording/."""
+  from PIL import Image
+
+  ndjson_path = RECORDING_DIR / "session.ndjson"
+  frames_dir = RECORDING_DIR / "frames"
+
+  if not ndjson_path.exists():
+    raise FileNotFoundError(
+      f"Recording not found: {ndjson_path}\n"
+      "Copy /tmp/esp-butt-session.ndjson here and frame PNGs into docs/recording/frames/."
+    )
+
+  events = []
+  with open(ndjson_path) as f:
+    for line in f:
+      line = line.strip()
+      if line:
+        events.append(json.loads(line))
+
+  frame_events = [e for e in events if e.get("type") == "frame"]
+  n_frames = len(frame_events)
+  n_cols = min(n_frames, _MAX_ATLAS_DIM // _FRAME_W) if n_frames > 0 else 1
+  n_rows = max(1, -(-n_frames // n_cols))  # ceil division
+
+  atlas_w = n_cols * _FRAME_W
+  atlas_h = n_rows * _FRAME_H
+
+  MODELS_DIR.mkdir(parents=True, exist_ok=True)
+
+  atlas = Image.new("RGB", (atlas_w, atlas_h), (0, 0, 0))
+  for idx, e in enumerate(frame_events):
+    col_px = (idx % n_cols) * _FRAME_W
+    row_px = (idx // n_cols) * _FRAME_H
+    e["_col"] = col_px
+    e["_row"] = row_px
+    img_path = frames_dir / e["file"]
+    if img_path.exists():
+      img = Image.open(img_path).convert("RGB").resize((_FRAME_W, _FRAME_H), Image.NEAREST)
+      atlas.paste(img, (col_px, row_px))
+    else:
+      print(f"  WARNING: frame not found: {img_path}")
+
+  atlas_out = MODELS_DIR / "screen-atlas.png"
+  atlas.save(atlas_out)
+  print(f"  Atlas: {n_frames} frames in {n_cols}\u00d7{n_rows} grid \u2192 {atlas_out.name}")
+
+  # Build recording.json — frame events get col/row pixel coords injected.
+  out_events = []
+  for e in events:
+    ev_type = e.get("type")
+    if ev_type == "frame":
+      out_events.append({"t": e["t"], "type": "frame", "col": e["_col"], "row": e["_row"]})
+    elif ev_type in ("slider", "nav"):
+      out_events.append({k: v for k, v in e.items()})
+
+  recording_out = MODELS_DIR / "recording.json"
+  recording_out.write_text(json.dumps({"events": out_events}))
+  print(f"  Recording: {len(out_events)} events \u2192 {recording_out.name}")
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
-STEP_FNS = {"cad": step_cad, "pcb": step_pcb, "bom": step_bom, "svg": step_svg}
+STEP_FNS = {"cad": step_cad, "pcb": step_pcb, "bom": step_bom, "svg": step_svg, "animation": step_animation}
 
 
 def main() -> None:
