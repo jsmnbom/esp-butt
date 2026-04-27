@@ -1,11 +1,9 @@
 <script setup lang="ts">
 import { useTresContext, useLoop } from "@tresjs/core";
-import { OrbitControls } from "@tresjs/cientos";
+import { Bounds, OrbitControls } from "@tresjs/cientos";
 import {
-  AmbientLight,
   AnimationMixer,
   Box3,
-  DirectionalLight,
   EdgesGeometry,
   LineBasicMaterial,
   LineSegments,
@@ -21,7 +19,7 @@ import { GLTFAnimationPointerExtension } from "@needle-tools/three-animation-poi
 const props = defineProps<{ url: string; animate?: boolean }>();
 
 // inject calls must happen before any await
-const { camera, scene, renderer } = useTresContext();
+const { scene, renderer } = useTresContext();
 
 const loader = new GLTFLoader();
 loader.register((parser) => new GLTFAnimationPointerExtension(parser));
@@ -40,23 +38,6 @@ const modelSize = sizeVec.length();
 gltfScene.position.x -= center.x;
 gltfScene.position.y -= center.y;
 gltfScene.position.z -= center.z;
-
-// Dynamic near/far + camera position based on model size
-const activeCam = camera.activeCamera.value;
-if (activeCam && "near" in activeCam) {
-  activeCam.near = modelSize / 100;
-  activeCam.far = modelSize * 100;
-  (activeCam as any).updateProjectionMatrix?.();
-  activeCam.position.set(0, modelSize * 0.75, modelSize);
-  activeCam.lookAt(new Vector3());
-
-  // Attach lights to camera so they always illuminate from the viewer direction
-  const ambient = new AmbientLight("#ffffff", 0.3);
-  const dirLight = new DirectionalLight("#ffffff", 0.8 * Math.PI);
-  dirLight.position.set(0.5, 0, 0.866); // ~60° elevation
-  activeCam.add(ambient);
-  activeCam.add(dirLight);
-}
 
 // RoomEnvironment IBL (neutral, no background)
 const pmrem = new PMREMGenerator(renderer.instance as WebGLRenderer);
@@ -146,6 +127,8 @@ if (props.animate && gltf.animations.length > 0) {
 </script>
 
 <template>
-  <OrbitControls :enable-damping="false" :screen-space-panning="true" :max-distance="maxDistance" />
-  <primitive :object="gltfScene" />
+  <OrbitControls :enable-damping="false" :screen-space-panning="true" :max-distance="maxDistance" make-default />
+  <Bounds use-mounted clip>
+    <primitive :object="gltfScene" />
+  </Bounds>
 </template>

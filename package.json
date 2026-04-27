@@ -19,6 +19,7 @@
     "@needle-tools/three-animation-pointer": "^1.0.7",
     "@tresjs/cientos": "^5.7.0",
     "@tresjs/core": "^5.8.0",
+    "gifuct-js": "^2.1.2",
     "three": "^0.183.2"
   }
 }

@@ -11,15 +11,15 @@ This directory holds the raw session recording used to build the hero animation.
 2. Copy the recording files here:
    ```bash
    cp /tmp/esp-butt-session.ndjson docs/recording/session.ndjson
-   cp -r /tmp/esp-butt-record-frames/ docs/recording/frames/
+   cp /tmp/esp-butt-session.gif docs/recording/session.gif
    ```
 3. Build the animation assets:
    ```bash
    ./docs_build.py animation
    ```
-   This produces `docs/public/models/screen-atlas.png` and `docs/public/models/recording.json`.
+   This produces `docs/public/models/session.gif` and `docs/public/models/recording.json`.
 
 ## Files
 
-- `session.ndjson` — raw event log (NDJSON, one event per line)
-- `frames/` — OLED frame PNG snapshots referenced by `session.ndjson`
+- `session.ndjson` — raw event log (NDJSON, one event per line); frame events reference GIF frame indices
+- `session.gif` — OLED frame snapshots stored as an animated GIF (used as a frame container)

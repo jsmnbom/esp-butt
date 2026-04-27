@@ -29,7 +29,10 @@ const isHovered = ref(false);
   >
     <!-- tone-mapping="1" = THREE.LinearToneMapping (matches three-gltf-viewer default) -->
     <TresCanvas :clear-color="clearColor" :window-size="false" :tone-mapping="1" :tone-mapping-exposure="1" :shadows="true">
-      <TresPerspectiveCamera :position="[1, 1, 1]" :look-at="[0, 0, 0]" :near="0.001" :far="100000" />
+      <TresPerspectiveCamera :position="[1, 1, 1]" :look-at="[0, 0, 0]" :near="0.001" :far="100000">
+        <TresAmbientLight :intensity="0.3" />
+        <TresDirectionalLight :intensity="0.8 * Math.PI" :position="[0.5, 0, 0.866]" />
+      </TresPerspectiveCamera>
       <Suspense>
         <CadScene :url="url" :animate="animate" />
       </Suspense>

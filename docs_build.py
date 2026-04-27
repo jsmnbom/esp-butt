@@ -16,11 +16,9 @@ Steps:
 import argparse
 import json
 import os
-import shutil
 import subprocess
-import sys
-import tempfile
 from pathlib import Path
+import sys
 
 REPO_ROOT = Path(__file__).resolve().parent
 DOCS_PUBLIC = REPO_ROOT / "docs" / "public"
@@ -28,6 +26,7 @@ MODELS_DIR = DOCS_PUBLIC / "models"
 SVG_DIR = REPO_ROOT / "docs" / "svg"
 CAD_DIR = REPO_ROOT / "cad"
 PCB_DIR = REPO_ROOT / "pcb"
+PCB_EXPORT_DIR = PCB_DIR / "export"
 RECORDING_DIR = REPO_ROOT / "docs" / "recording"
 
 PCB_NAME = "esp-butt"
@@ -36,54 +35,38 @@ DARK_THEME = "witchhazel"
 PCB_FRONT_LAYERS = "F.Cu,F.Mask,F.Silkscreen,Edge.Cuts"
 PCB_BACK_LAYERS = "B.Cu,B.Mask,B.Silkscreen,Edge.Cuts"
 
-ALL_STEPS = ["cad", "pcb", "bom", "svg", "animation"]
+SCH_FILE = PCB_DIR / PCB_NAME / f"{PCB_NAME}.kicad_sch"
+PCB_FILE = PCB_DIR / PCB_NAME / f"{PCB_NAME}.kicad_pcb"
+BOM_FILE = DOCS_PUBLIC / "bom.csv"
 
 KICAD_CLI = os.getenv("KICAD_CLI", "kicad-cli")
 INKSCAPE = os.getenv("INKSCAPE", "inkscape")
 
+os.environ["BUILDING_DOCS"] = "1"
+os.environ["NO_CAD_EXPORT"] = "1"
+os.environ["KICAD_CONFIG_HOME"] = os.environ.get("KICAD_CONFIG_HOME", str(PCB_DIR / "kicad-config"))
 
-def pre_cad_utils_import():
-  # Must be set before importing cad_utils so show/viewer calls become no-ops.
-  os.environ["BUILDING_DOCS"] = "1"
-  # Prevent the individual notebooks from writing versioned .step exports.
-  os.environ["NO_CAD_EXPORT"] = "1"
-
-  cad_str = str(CAD_DIR)
-  if cad_str not in sys.path:
-    sys.path.insert(0, cad_str)
+sys.path.insert(0, str(CAD_DIR))
 
 
 def inkscape_crop_svg(file: Path) -> None:
   """Crop an SVG in-place to its drawing bounds using Inkscape."""
-  fd, tmp_path = tempfile.mkstemp(suffix=".svg")
-  os.close(fd)
-  try:
-    with open(file, "rb") as src, open(tmp_path, "wb") as dst:
-      subprocess.run(
-        [
-          INKSCAPE,
-          "--pipe",
-          "--export-type=svg",
-          "--export-area-drawing",
-          "--export-plain-svg",
-        ],
-        stdin=src,
-        stdout=dst,
-        stderr=subprocess.DEVNULL,
-        check=True,
-      )
-    shutil.move(tmp_path, file)
-  except Exception:
-    Path(tmp_path).unlink(missing_ok=True)
-    raise
+  subprocess.run(
+    [
+      INKSCAPE,
+      "--export-type=svg",
+      "--export-area-drawing",
+      "--export-plain-svg",
+      "--export-overwrite",
+      f"--export-filename={str(file)}",
+      str(file),
+    ],
+    stderr=subprocess.DEVNULL,
+    check=True,
+  )
 
 
-def _kicad_env() -> dict[str, str]:
-  config_home = os.environ.get("KICAD_CONFIG_HOME", str(PCB_DIR / "kicad-config"))
-  return {**os.environ, "KICAD_CONFIG_HOME": config_home}
-
-
-def _kicad_export(
+def kicad_export(
   path: str | Path,
   export_format: str,
   output: str | Path,
@@ -92,32 +75,20 @@ def _kicad_export(
   theme: str | None = None,
 ) -> None:
   args = [*args, "--theme", theme] if theme else args
-  p = subprocess.run(
+  subprocess.run(
     [KICAD_CLI, export_type, "export", export_format, "--output", str(output), *args, str(path)],
-    capture_output=True,
-    env=_kicad_env(),
+    check=True,
   )
-  if p.returncode != 0:
-    print(p.stdout.decode())
-    raise RuntimeError(f"Failed to export PCB: {p.stderr.decode()}")
 
 
 def step_cad() -> None:
   """Export 3D models (.step / .glb) from the CAD notebooks."""
-  pre_cad_utils_import()
+  import import_ipynb  # type: ignore
 
-  # Notebooks use relative paths (e.g. "../pcb/…"), so cwd must be cad/.
-  orig_cwd = Path.cwd()
-  os.chdir(CAD_DIR)
-  try:
-    import import_ipynb  # noqa: F401 — registers the .ipynb importer
-
-    from case import case, case_top, case_bottom  # type: ignore[import]
-    from encoder_knob import encoder_knob  # type: ignore[import]
-    from slider_knob import slider_knob  # type: ignore[import]
-    from power_switch_cap import power_switch_cap  # type: ignore[import]
-  finally:
-    os.chdir(orig_cwd)
+  from cad.case import case, case_top, case_bottom  # type: ignore[import]
+  from cad.encoder_knob import encoder_knob  # type: ignore[import]
+  from cad.slider_knob import slider_knob  # type: ignore[import]
+  from cad.power_switch_cap import power_switch_cap  # type: ignore[import]
 
   from build123d import Unit, export_gltf, export_step
 
@@ -132,25 +103,18 @@ def step_cad() -> None:
 
 def step_pcb() -> None:
   """Export the PCB as a glTF model (pcb.glb) for the 3D viewer."""
-  pre_cad_utils_import()
-  from cad_utils import export_gltf_doc, load_pcb_doc
+  from cad.cad_utils import export_gltf_doc, load_pcb_doc
 
-  MODELS_DIR.mkdir(parents=True, exist_ok=True)
-
-  print(f"  {PCB_NAME}.glb...")
-  pcb_doc = load_pcb_doc(PCB_NAME, PCB_DIR / PCB_NAME, PCB_DIR / "export")
+  pcb_doc = load_pcb_doc(PCB_NAME, PCB_DIR / PCB_NAME, PCB_EXPORT_DIR)
   export_gltf_doc(pcb_doc, MODELS_DIR / "pcb.glb", scale=100)
 
 
 def step_bom() -> None:
   """Export the bill of materials (bom.csv) from the schematic."""
-  DOCS_PUBLIC.mkdir(parents=True, exist_ok=True)
-
-  print("  bom.csv...")
-  _kicad_export(
-    PCB_DIR / PCB_NAME / f"{PCB_NAME}.kicad_sch",
+  kicad_export(
+    SCH_FILE,
     "bom",
-    DOCS_PUBLIC / "bom.csv",
+    BOM_FILE,
     "--fields",
     "Reference,${QUANTITY},Value,Value_ALT,Source_EU,Source_US",
     "--labels",
@@ -161,11 +125,6 @@ def step_bom() -> None:
     ";",
     export_type="sch",
   )
-
-
-# ---------------------------------------------------------------------------
-# Step: svg
-# ---------------------------------------------------------------------------
 
 
 def _export_svg_pair(
@@ -181,76 +140,59 @@ def _export_svg_pair(
     inkscape_crop_svg(out)
 
 
+def _export_svg_sch_fn(out: Path, theme: str | None) -> None:
+  kicad_export(
+    SCH_FILE,
+    "svg",
+    out.parent,
+    "--no-background-color",
+    "--exclude-drawing-sheet",
+    export_type="sch",
+    theme=theme,
+  )
+  # sch export svg has no --mode-single
+  (out.parent / f"{PCB_NAME}.svg").rename(out)
+
+
+def _export_svg_pcb(layers: str):
+  def export_fn(out: Path, theme: str | None) -> None:
+    kicad_export(
+      PCB_FILE,
+      "svg",
+      out,
+      "--layers",
+      layers,
+      "--mode-single",
+      "--fit-page-to-board",
+      "--exclude-drawing-sheet",
+      theme=theme,
+    )
+
+  return export_fn
+
+
 def step_svg() -> None:
   """Export schematic and PCB SVGs via kicad-cli, then crop with Inkscape."""
-  sch = PCB_DIR / PCB_NAME / f"{PCB_NAME}.kicad_sch"
-  pcb = PCB_DIR / PCB_NAME / f"{PCB_NAME}.kicad_pcb"
-
-  # Schematic — kicad-cli writes <name>.svg into the output dir; rename to light/dark.
-  def export_sch(out: Path, theme: str | None) -> None:
-    _kicad_export(
-      sch,
-      "svg",
-      out.parent,
-      "--no-background-color",
-      "--exclude-drawing-sheet",
-      export_type="sch",
-      theme=theme,
-    )
-    (out.parent / f"{PCB_NAME}.svg").rename(out)
-
-  def export_front(out: Path, theme: str | None) -> None:
-    _kicad_export(
-      pcb,
-      "svg",
-      out,
-      "--layers",
-      PCB_FRONT_LAYERS,
-      "--mode-single",
-      "--fit-page-to-board",
-      "--exclude-drawing-sheet",
-      theme=theme,
-    )
-
-  def export_back(out: Path, theme: str | None) -> None:
-    _kicad_export(
-      pcb,
-      "svg",
-      out,
-      "--layers",
-      PCB_BACK_LAYERS,
-      "--mode-single",
-      "--fit-page-to-board",
-      "--mirror",
-      "--exclude-drawing-sheet",
-      theme=theme,
-    )
-
-  _export_svg_pair("schematic", SVG_DIR / "schematic", export_sch)
-  _export_svg_pair("PCB front", SVG_DIR / "front", export_front)
-  _export_svg_pair("PCB back", SVG_DIR / "back", export_back)
+  _export_svg_pair("schematic", SVG_DIR / "schematic", _export_svg_sch_fn)
+  _export_svg_pair("PCB front", SVG_DIR / "front", _export_svg_pcb(PCB_FRONT_LAYERS))
+  _export_svg_pair("PCB back", SVG_DIR / "back", _export_svg_pcb(PCB_BACK_LAYERS))
 
 
 # ---------------------------------------------------------------------------
 # Step: animation
 # ---------------------------------------------------------------------------
 
-_FRAME_W = 128
-_FRAME_H = 64
-_MAX_ATLAS_DIM = 4096
-
-
 def step_animation() -> None:
-  """Build screen-atlas.png and recording.json from docs/recording/."""
-  from PIL import Image
+  """Build recording.json from docs/recording/ and copy the GIF to public/models/."""
+  import shutil
 
   ndjson_path = RECORDING_DIR / "session.ndjson"
-  frames_dir = RECORDING_DIR / "frames"
+  gif_path = RECORDING_DIR / "session.gif"
 
-  if not ndjson_path.exists():
+  if not ndjson_path.exists() or not gif_path.exists():
     raise FileNotFoundError(
-      f"Recording not found: {ndjson_path}\n"
-      "Copy /tmp/esp-butt-session.ndjson here and frame PNGs into docs/recording/frames/."
+      f"Recording not found: expected {ndjson_path} and {gif_path}\n"
+      "Copy /tmp/esp-butt-session.ndjson and /tmp/esp-butt-session.gif here."
     )
 
   events = []
@@ -260,39 +202,18 @@ def step_animation() -> None:
       if line:
         events.append(json.loads(line))
 
-  frame_events = [e for e in events if e.get("type") == "frame"]
-  n_frames = len(frame_events)
-  n_cols = min(n_frames, _MAX_ATLAS_DIM // _FRAME_W) if n_frames > 0 else 1
-  n_rows = max(1, -(-n_frames // n_cols))  # ceil division
+  # Copy GIF to public/models/ for the browser to load.
+  gif_out = MODELS_DIR / "session.gif"
+  shutil.copy2(gif_path, gif_out)
+  n_frames = sum(1 for e in events if e.get("type") == "frame")
+  print(f"  GIF: {n_frames} frames \u2192 {gif_out.name}")
 
-  atlas_w = n_cols * _FRAME_W
-  atlas_h = n_rows * _FRAME_H
-
-  MODELS_DIR.mkdir(parents=True, exist_ok=True)
-
-  atlas = Image.new("RGB", (atlas_w, atlas_h), (0, 0, 0))
-  for idx, e in enumerate(frame_events):
-    col_px = (idx % n_cols) * _FRAME_W
-    row_px = (idx // n_cols) * _FRAME_H
-    e["_col"] = col_px
-    e["_row"] = row_px
-    img_path = frames_dir / e["file"]
-    if img_path.exists():
-      img = Image.open(img_path).convert("RGB").resize((_FRAME_W, _FRAME_H), Image.NEAREST)
-      atlas.paste(img, (col_px, row_px))
-    else:
-      print(f"  WARNING: frame not found: {img_path}")
-
-  atlas_out = MODELS_DIR / "screen-atlas.png"
-  atlas.save(atlas_out)
-  print(f"  Atlas: {n_frames} frames in {n_cols}\u00d7{n_rows} grid \u2192 {atlas_out.name}")
-
-  # Build recording.json — frame events get col/row pixel coords injected.
+  # Build recording.json — forward frame, nav, and slider events as-is.
   out_events = []
   for e in events:
     ev_type = e.get("type")
     if ev_type == "frame":
-      out_events.append({"t": e["t"], "type": "frame", "col": e["_col"], "row": e["_row"]})
+      out_events.append({"t": e["t"], "type": "frame", "frame": e["frame"]})
     elif ev_type in ("slider", "nav"):
       out_events.append({k: v for k, v in e.items()})
 
@@ -305,7 +226,15 @@ def step_animation() -> None:
 # Entry point
 # ---------------------------------------------------------------------------
 
-STEP_FNS = {"cad": step_cad, "pcb": step_pcb, "bom": step_bom, "svg": step_svg, "animation": step_animation}
+STEP_FNS = {
+  "cad": step_cad,
+  "pcb": step_pcb,
+  "bom": step_bom,
+  "svg": step_svg,
+  "animation": step_animation,
+}
+
+ALL_STEPS = list(STEP_FNS.keys())
 
 
 def main() -> None:
@@ -322,6 +251,9 @@ def main() -> None:
   )
   args = parser.parse_args()
   steps = args.steps or ALL_STEPS
+
+  MODELS_DIR.mkdir(parents=True, exist_ok=True)
+  DOCS_PUBLIC.mkdir(parents=True, exist_ok=True)
 
   for step in steps:
     print(f"==> {step}")

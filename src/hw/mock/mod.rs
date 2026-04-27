@@ -55,9 +55,10 @@ impl HardwareMock {
     Self::spawn_ticker_task(input_tx.clone());
 
     if std::env::var_os("ESP_BUTT_RECORD_SESSION").is_some() {
-      let record_path = std::env::temp_dir().join("esp-butt-session.ndjson");
-      log::info!("Recording session to {}", record_path.display());
-      Self::spawn_recorder_task(record_path, input_tx.subscribe(), frame_rx.clone());
+      let gif_path = std::env::temp_dir().join("esp-butt-session.gif");
+      let ndjson_path = std::env::temp_dir().join("esp-butt-session.ndjson");
+      log::info!("Recording session to {} / {}", gif_path.display(), ndjson_path.display());
+      Self::spawn_recorder_task(gif_path, ndjson_path, input_tx.subscribe(), frame_rx.clone());
     }
 
     Self::spawn_ui_task(input_tx.clone(), frame_rx)?;
@@ -107,40 +108,46 @@ impl HardwareMock {
   }
 
   fn spawn_recorder_task(
-    record_path: PathBuf,
+    gif_path: PathBuf,
+    ndjson_path: PathBuf,
     mut event_rx: broadcast::Receiver<AppEvent>,
     mut frame_rx: watch::Receiver<Vec<u8>>,
   ) {
+    use image::Frame;
+    use image::codecs::gif::{GifEncoder, Repeat};
     use std::io::Write as _;
     use std::time::Instant;
 
+    // Fixed placeholder delay — the GIF is used as a frame container only;
+    // actual timing comes from the ndjson event log.
+    const FRAME_DELAY_MS: u32 = 100;
+
     utils::task::spawn(
       async move {
-        let frames_dir = std::env::temp_dir().join("esp-butt-record-frames");
-
-        if frames_dir.exists() {
-          if let Err(err) = std::fs::remove_dir_all(&frames_dir) {
-            log::error!("recorder: failed to clear frames dir: {err}");
-            return;
-          }
-        }
-        if let Err(err) = std::fs::create_dir_all(&frames_dir) {
-          log::error!("recorder: failed to create frames dir: {err}");
-          return;
-        }
-        log::info!("recorder: frames → {}", frames_dir.display());
-
-        let file = match std::fs::File::create(&record_path) {
+        let gif_file = match std::fs::File::create(&gif_path) {
           Ok(f) => f,
           Err(err) => {
-            log::error!("recorder: failed to open record file: {err}");
+            log::error!("recorder: failed to create gif: {err}");
+            return;
+          }
+        };
+        let ndjson_file = match std::fs::File::create(&ndjson_path) {
+          Ok(f) => f,
+          Err(err) => {
+            log::error!("recorder: failed to create ndjson: {err}");
             return;
           }
         };
 
-        let mut writer = std::io::BufWriter::new(file);
+        let mut encoder = GifEncoder::new_with_speed(std::io::BufWriter::new(gif_file), 10);
+        if let Err(err) = encoder.set_repeat(Repeat::Infinite) {
+          log::error!("recorder: failed to set repeat: {err}");
+          return;
+        }
+        let mut writer = std::io::BufWriter::new(ndjson_file);
+
         let start = Instant::now();
-        let mut frame_num = 0u32;
+        let mut frame_count = 0u32;
 
         loop {
           tokio::select! {
@@ -172,25 +179,26 @@ impl HardwareMock {
             }
             Ok(()) = frame_rx.changed() => {
               let t = start.elapsed().as_secs_f64();
-              let frame = frame_rx.borrow_and_update().clone();
-              frame_num += 1;
-              let filename = format!("frame_{frame_num:05}.png");
-              let img = frame_to_image(&frame);
-              let frame_path = frames_dir.join(&filename);
-              if let Err(err) = img.save(&frame_path) {
-                log::warn!("recorder: failed to save frame: {err}");
+              let frame_data = frame_rx.borrow_and_update().clone();
+              let rgba = frame_to_image(&frame_data).to_rgba8();
+              let gif_frame = Frame::from_parts(
+                rgba,
+                0,
+                0,
+                image::Delay::from_numer_denom_ms(FRAME_DELAY_MS, 1),
+              );
+              if let Err(err) = encoder.encode_frame(gif_frame) {
+                log::warn!("recorder: encode error: {err}");
               } else {
-                let _ = writeln!(
-                  writer,
-                  r#"{{"t":{t:.3},"type":"frame","file":"{filename}"}}"#
-                );
+                let _ = writeln!(writer, r#"{{"t":{t:.3},"type":"frame","frame":{frame_count}}}"#);
+                frame_count += 1;
               }
             }
             else => break,
           }
         }
 
-        log::info!("recorder: finished ({frame_num} frames)");
+        log::info!("recorder: finished ({frame_count} frames)");
       },
       c"recorder",
       16384,

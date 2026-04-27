@@ -1,4 +1,5 @@
 import math
+from io import BytesIO
 from os import PathLike, fsdecode
 
 from OCP.BRepMesh import BRepMesh_IncrementalMesh
@@ -16,6 +17,13 @@ from OCP.TDocStd import TDocStd_Document
 from OCP.TopLoc import TopLoc_Location
 from OCP.XCAFApp import XCAFApp_Application
 from OCP.XCAFDoc import XCAFDoc_DocumentTool, XCAFDoc_Location, XCAFDoc_ShapeTool
+
+
+def dump_doc(doc):
+  shape_tool = XCAFDoc_DocumentTool.ShapeTool_s(doc.Main())
+  b = BytesIO()
+  shape_tool.Dump(b, True)
+  print(b.getvalue().decode())
 
 
 def import_step_doc(file_path: PathLike | str | bytes) -> TDocStd_Document:
@@ -116,4 +124,3 @@ def copy_doc_free_shapes(
     new_labels.append(dst_label)
 
   return new_labels
-

@@ -5,4 +5,5 @@
   "python.languageServer": "Pylance",
   "rust-analyzer.cargo.allTargets": false,
   "rust-analyzer.lens.enable": false,
+  "jupyter.notebookFileRoot": "${workspaceFolder}/cad"
 }
