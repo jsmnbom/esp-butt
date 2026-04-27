@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
-import { withBase } from "vitepress";
+import { ref, computed } from "vue";
 import FlagEU from "~icons/circle-flags/eu";
 import FlagUS from "~icons/circle-flags/us";
 import ResistorBands from "./ResistorBands.vue";
+import bomText from "~/docs/bom.csv?raw";
 
 interface BomRow {
   [key: string]: string;
@@ -15,10 +15,7 @@ function displayValue(row: BomRow): string {
   return alt ? `${val} / ${alt}` : val;
 }
 
-const rows = ref<BomRow[]>([]);
-const headers = ref<string[]>([]);
 const activeTab = ref<"EU" | "US">("EU");
-const error = ref<string | null>(null);
 
 function parseCSV(text: string): { headers: string[]; rows: BomRow[] } {
   const lines = text.trim().split("\n");
@@ -30,6 +27,8 @@ function parseCSV(text: string): { headers: string[]; rows: BomRow[] } {
   });
   return { headers: hdrs, rows: data };
 }
+
+const { headers, rows } = parseCSV(bomText);
 
 function distributorName(url: string): string {
   try {
@@ -50,48 +49,33 @@ const sourceCol = computed(() =>
 const SELECTED_COLS = ["Reference", "Quantity", "Value"];
 
 const visibleHeaders = computed(() =>
-  headers.value.filter((h) => SELECTED_COLS.includes(h))
+  headers.filter((h) => SELECTED_COLS.includes(h))
 );
 
 const hasSources = computed(
   () =>
-    headers.value.includes("Source_EU") || headers.value.includes("Source_US")
+    headers.includes("Source_EU") || headers.includes("Source_US")
 );
-
-onMounted(async () => {
-  try {
-    const resp = await fetch(withBase("/bom.csv"));
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const text = await resp.text();
-    const parsed = parseCSV(text);
-    headers.value = parsed.headers;
-    rows.value = parsed.rows;
-  } catch (e: any) {
-    error.value = e.message;
-  }
-});
 </script>
 
 <template>
   <div class="bom-table">
-    <p v-if="error" class="error">Failed to load BOM: {{ error }}</p>
-    <template v-else-if="rows.length">
-      <div v-if="hasSources" class="tabs">
-        <button :class="{ active: activeTab === 'EU' }" @click="activeTab = 'EU'">
-          <FlagEU style="font-size:1.2em" /> EU
-        </button>
-        <button :class="{ active: activeTab === 'US' }" @click="activeTab = 'US'">
-          <FlagUS style="font-size:1.2em" /> US
-        </button>
-      </div>
-      <table>
-        <thead>
-          <tr>
-            <th v-for="h in visibleHeaders" :key="h">{{ h }}</th>
-            <th v-if="hasSources">Source</th>
-          </tr>
-        </thead>
-        <tbody>
+    <div v-if="hasSources" class="tabs">
+      <button :class="{ active: activeTab === 'EU' }" @click="activeTab = 'EU'">
+        <FlagEU style="font-size:1.2em" /> EU
+      </button>
+      <button :class="{ active: activeTab === 'US' }" @click="activeTab = 'US'">
+        <FlagUS style="font-size:1.2em" /> US
+      </button>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th v-for="h in visibleHeaders" :key="h">{{ h }}</th>
+          <th v-if="hasSources">Source</th>
+        </tr>
+      </thead>
+      <tbody>
           <tr v-for="(row, i) in rows" :key="i">
             <td v-for="h in visibleHeaders" :key="h">
               <template v-if="h === 'Value'">
@@ -114,10 +98,8 @@ onMounted(async () => {
               <span v-else>—</span>
             </td>
           </tr>
-        </tbody>
-      </table>
-    </template>
-    <p v-else>Loading BOM...</p>
+      </tbody>
+    </table>
   </div>
 </template>
 

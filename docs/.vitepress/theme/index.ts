@@ -1,4 +1,5 @@
 import DefaultTheme from "vitepress/theme";
+import Layout from "./Layout.vue";
 import CadViewer from "./components/CadViewer.vue";
 import HeroViewer from "./components/HeroViewer.vue";
 import BomTable from "./components/BomTable.vue";
@@ -10,6 +11,7 @@ import './custom.css'
 
 export default {
   extends: DefaultTheme,
+  Layout,
   enhanceApp({ app }) {
     app.component("CadViewer", CadViewer);
     app.component("HeroViewer", HeroViewer);

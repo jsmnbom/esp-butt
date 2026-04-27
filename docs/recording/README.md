@@ -13,11 +13,9 @@ This directory holds the raw session recording used to build the hero animation.
    cp /tmp/esp-butt-session.ndjson docs/recording/session.ndjson
    cp /tmp/esp-butt-session.gif docs/recording/session.gif
    ```
-3. Build the animation assets:
-   ```bash
-   ./docs_build.py animation
-   ```
-   This produces `docs/public/models/session.gif` and `docs/public/models/recording.json`.
+
+   `session.ndjson` and `session.gif` are imported directly by Vite as part of the
+   docs bundle — no separate build step is required.
 
 ## Files
 

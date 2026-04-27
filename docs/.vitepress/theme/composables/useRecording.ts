@@ -1,3 +1,8 @@
+import { shallowRef, onMounted } from "vue";
+import recordingEvents from "~/recording/session.ndjson";
+import gifUrl from "~/recording/session.gif?url";
+import { useGifFrames } from "./useGifFrames";
+
 export interface RecordingEvent {
   t: number;
   type: "frame" | "slider" | "nav";
@@ -9,6 +14,7 @@ export interface RecordingEvent {
 
 export interface Recording {
   events: RecordingEvent[];
+  frames: ImageBitmap[];
 }
 
 export interface ProcessedRecording {
@@ -26,12 +32,7 @@ export interface ProcessedRecording {
 const DEG_PER_CLICK = 15;
 const PADDING = 0.5; // seconds of rest pose before/after recording
 
-/**
- * Parse raw recording JSON into pre-processed animation tracks offset by PADDING.
- * All returned time values already include the PADDING offset.
- */
-export function useRecording(recording: Recording): ProcessedRecording {
-  const events = recording.events;
+function processEvents(events: RecordingEvent[]): ProcessedRecording {
   const lastT = events.length > 0 ? Math.max(...events.map((e) => e.t)) : 0;
   const duration = lastT + 2 * PADDING;
 
@@ -61,6 +62,25 @@ export function useRecording(recording: Recording): ProcessedRecording {
   }
 
   return { duration, sliderEvents, encRotEvents, encSelectTimes, frameEvents };
+}
+
+/**
+ * Load and process the session recording. Events are bundled at build time from
+ * session.ndjson; GIF frames are decoded asynchronously after mount.
+ */
+export function useRecording(): { recording: ReturnType<typeof shallowRef<Recording>> } & ProcessedRecording {
+  const recording = shallowRef<Recording>({
+    events: recordingEvents as RecordingEvent[],
+    frames: [],
+  });
+
+  onMounted(async () => {
+    const frames = await useGifFrames(gifUrl).catch(() => [] as ImageBitmap[]);
+    recording.value = { events: recording.value.events, frames };
+  });
+
+  const processed = processEvents(recording.value.events);
+  return { recording, ...processed };
 }
 
 /** Binary search: index of last entry with entry.t <= t, or -1 if none. */

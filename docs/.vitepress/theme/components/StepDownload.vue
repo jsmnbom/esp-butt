@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import { withBase } from "vitepress";
 import IconDownload from "~icons/mdi/download";
 
+export interface StepFile {
+  name: string;
+  url: string;
+}
+
 const props = defineProps<{
-  files: string | string[];
+  files: StepFile | StepFile[];
 }>();
 
 const fileList = Array.isArray(props.files) ? props.files : [props.files];
@@ -13,11 +17,11 @@ const fileList = Array.isArray(props.files) ? props.files : [props.files];
   <div class="step-downloads">
     <a
       v-for="file in fileList"
-      :key="file"
-      :href="withBase(`/models/${file}.step`)"
-      :download="`${file}.step`"
+      :key="file.name"
+      :href="file.url"
+      :download="`${file.name}.step`"
       class="download-btn"
-    ><IconDownload style="font-size:1em;flex-shrink:0" /> {{ file }}.step</a>
+    ><IconDownload style="font-size:1em;flex-shrink:0" /> {{ file.name }}.step</a>
   </div>
 </template>
 

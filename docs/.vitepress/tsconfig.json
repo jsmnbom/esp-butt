@@ -6,7 +6,13 @@
     "strict": true,
     "jsx": "preserve",
     "lib": ["ES2022", "DOM"],
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "paths": {
+      "~/models/*": ["../models/*"],
+      "~/recording/*": ["../recording/*"],
+      "~/docs/*": ["../*"],
+      "~/svg/*": ["../svg/*"],
+    }
   },
   "include": [
     "**/*.ts",

@@ -7,9 +7,9 @@ PCB design files are available in the [`pcb/`](https://github.com/jsmnbom/esp-bu
 ## 3D Preview
 
 <script setup>
-import { withBase } from 'vitepress'
+import { pcbGlb } from '../.vitepress/theme/composables/models';
 </script>
 
 <ClientOnly>
-  <CadViewer :url="withBase('/models/pcb.glb')"/>
+  <CadViewer :url="pcbGlb"/>
 </ClientOnly>

@@ -14,20 +14,20 @@ Steps:
 """
 
 import argparse
-import json
 import os
 import subprocess
 from pathlib import Path
 import sys
 
 REPO_ROOT = Path(__file__).resolve().parent
-DOCS_PUBLIC = REPO_ROOT / "docs" / "public"
-MODELS_DIR = DOCS_PUBLIC / "models"
-SVG_DIR = REPO_ROOT / "docs" / "svg"
+DOCS_DIR = REPO_ROOT / "docs"
+DOCS_PUBLIC = DOCS_DIR / "public"
+MODELS_DIR = DOCS_DIR / "models"
+SVG_DIR = DOCS_DIR / "svg"
 CAD_DIR = REPO_ROOT / "cad"
 PCB_DIR = REPO_ROOT / "pcb"
 PCB_EXPORT_DIR = PCB_DIR / "export"
-RECORDING_DIR = REPO_ROOT / "docs" / "recording"
+RECORDING_DIR = DOCS_DIR / "recording"
 
 PCB_NAME = "esp-butt"
 DARK_THEME = "witchhazel"
@@ -37,7 +37,7 @@ PCB_BACK_LAYERS = "B.Cu,B.Mask,B.Silkscreen,Edge.Cuts"
 
 SCH_FILE = PCB_DIR / PCB_NAME / f"{PCB_NAME}.kicad_sch"
 PCB_FILE = PCB_DIR / PCB_NAME / f"{PCB_NAME}.kicad_pcb"
-BOM_FILE = DOCS_PUBLIC / "bom.csv"
+BOM_FILE = DOCS_DIR / "bom.csv"
 
 KICAD_CLI = os.getenv("KICAD_CLI", "kicad-cli")
 INKSCAPE = os.getenv("INKSCAPE", "inkscape")
@@ -85,20 +85,26 @@ def step_cad() -> None:
   """Export 3D models (.step / .glb) from the CAD notebooks."""
   import import_ipynb  # type: ignore
 
-  from cad.case import case, case_top, case_bottom  # type: ignore[import]
+  from cad.case import PCB, case, case_top, case_bottom  # type: ignore[import]
   from cad.encoder_knob import encoder_knob  # type: ignore[import]
   from cad.slider_knob import slider_knob  # type: ignore[import]
   from cad.power_switch_cap import power_switch_cap  # type: ignore[import]
+  from cad.assembly import create_assembly  # type: ignore[import]
 
-  from build123d import Unit, export_gltf, export_step
+  from build123d import export_step, Unit
+  from build123d.exporters3d import _create_xde
+  from cad.cad_utils import export_gltf_doc
 
   MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
-  models = [case, case_top, case_bottom, encoder_knob, slider_knob, power_switch_cap]
+  assembly = create_assembly(PCB, slider_knob, encoder_knob, power_switch_cap, case_top, case_bottom)
+
+  models = [case, case_top, case_bottom, encoder_knob, slider_knob, power_switch_cap, assembly]
   for model in models:
     print(f"  {model.label}...")
     export_step(model, MODELS_DIR / f"{model.label}.step")
-    export_gltf(model, str(MODELS_DIR / f"{model.label}.glb"), Unit.MM, True, 0.01, 0.25)
+    doc = _create_xde(model, Unit.MM, auto_naming=True)
+    export_gltf_doc(doc, MODELS_DIR / f"{model.label}.glb", scale=100)
 
 
 def step_pcb() -> None:
@@ -179,50 +185,6 @@ def step_svg() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Step: animation
-# ---------------------------------------------------------------------------
-
-def step_animation() -> None:
-  """Build recording.json from docs/recording/ and copy the GIF to public/models/."""
-  import shutil
-
-  ndjson_path = RECORDING_DIR / "session.ndjson"
-  gif_path = RECORDING_DIR / "session.gif"
-
-  if not ndjson_path.exists() or not gif_path.exists():
-    raise FileNotFoundError(
-      f"Recording not found: expected {ndjson_path} and {gif_path}\n"
-      "Copy /tmp/esp-butt-session.ndjson and /tmp/esp-butt-session.gif here."
-    )
-
-  events = []
-  with open(ndjson_path) as f:
-    for line in f:
-      line = line.strip()
-      if line:
-        events.append(json.loads(line))
-
-  # Copy GIF to public/models/ for the browser to load.
-  gif_out = MODELS_DIR / "session.gif"
-  shutil.copy2(gif_path, gif_out)
-  n_frames = sum(1 for e in events if e.get("type") == "frame")
-  print(f"  GIF: {n_frames} frames \u2192 {gif_out.name}")
-
-  # Build recording.json — forward frame, nav, and slider events as-is.
-  out_events = []
-  for e in events:
-    ev_type = e.get("type")
-    if ev_type == "frame":
-      out_events.append({"t": e["t"], "type": "frame", "frame": e["frame"]})
-    elif ev_type in ("slider", "nav"):
-      out_events.append({k: v for k, v in e.items()})
-
-  recording_out = MODELS_DIR / "recording.json"
-  recording_out.write_text(json.dumps({"events": out_events}))
-  print(f"  Recording: {len(out_events)} events \u2192 {recording_out.name}")
-
-
-# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -231,7 +193,6 @@ STEP_FNS = {
   "pcb": step_pcb,
   "bom": step_bom,
   "svg": step_svg,
-  "animation": step_animation,
 }
 
 ALL_STEPS = list(STEP_FNS.keys())
@@ -253,7 +214,6 @@ def main() -> None:
   steps = args.steps or ALL_STEPS
 
   MODELS_DIR.mkdir(parents=True, exist_ok=True)
-  DOCS_PUBLIC.mkdir(parents=True, exist_ok=True)
 
   for step in steps:
     print(f"==> {step}")

@@ -1,41 +1,45 @@
 # 3D Models
 
 <script setup>
-import { withBase } from 'vitepress'
+import {
+  caseGlb, encoderKnobGlb, sliderKnobGlb, powerSwitchCapGlb,
+  caseTopStepUrl, caseBottomStepUrl, encoderKnobStepUrl,
+  sliderKnobStepUrl, powerSwitchCapStepUrl,
+} from '../.vitepress/theme/composables/models';
 </script>
 
 All parts are designed in [build123d](https://build123d.readthedocs.io/en/latest/) with custom helpers. Source notebooks are in the [`cad/`](https://github.com/jsmnbom/esp-butt/tree/main/cad) directory.
 
 ## Case
 
-<StepDownload :files="['case_top', 'case_bottom']" />
+<StepDownload :files="[{ name: 'case_top', url: caseTopStepUrl }, { name: 'case_bottom', url: caseBottomStepUrl }]" />
 
 <ClientOnly>
-  <CadViewer :url="withBase('/models/case.glb')"/>
+  <CadViewer :url="caseGlb"/>
 </ClientOnly>
 
 ## Encoder knob
 
-<StepDownload files="encoder_knob" />
+<StepDownload :files="{ name: 'encoder_knob', url: encoderKnobStepUrl }" />
 
 <ClientOnly>
-  <CadViewer :url="withBase('/models/encoder_knob.glb')"/>
+  <CadViewer :url="encoderKnobGlb"/>
 </ClientOnly>
 
 ## Slider knob
 
-<StepDownload files="slider_knob" />
+<StepDownload :files="{ name: 'slider_knob', url: sliderKnobStepUrl }" />
 
 <ClientOnly>
-  <CadViewer :url="withBase('/models/slider_knob.glb')"/>
+  <CadViewer :url="sliderKnobGlb"/>
 </ClientOnly>
 
 ## Power switch cap
 
-<StepDownload files="power_switch_cap" />
+<StepDownload :files="{ name: 'power_switch_cap', url: powerSwitchCapStepUrl }" />
 
 <ClientOnly>
-  <CadViewer :url="withBase('/models/power_switch_cap.glb')"/>
+  <CadViewer :url="powerSwitchCapGlb"/>
 </ClientOnly>
 
 
