@@ -16,7 +16,9 @@
     "@types/node": "^25.6.0",
     "@types/three": "^0.183.1",
     "rollup-plugin-visualizer": "^7.0.1",
+    "svgo": "^4.0.1",
     "unplugin-icons": "^23.0.1",
+    "vite-plugin-image-optimizer": "^2.0.3",
     "vitepress": "^2.0.0-alpha.17"
   },
   "dependencies": {

@@ -5,6 +5,7 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { glbCompressPlugin } from "./plugins/glb";
 import { visualizer } from "rollup-plugin-visualizer";
+import { ViteImageOptimizer } from "vite-plugin-image-optimizer";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -73,6 +74,17 @@ export default defineConfig({
           return `export default ${JSON.stringify(events)};`;
         },
       },
+      ViteImageOptimizer({
+        svg: {
+          plugins: [
+            {
+              name: "preset-default",
+              params: { overrides: { removeViewBox: false } },
+            } as any,
+            "removeDimensions",
+          ],
+        },
+      }),
       visualizer({ filename: "docs/.vitepress/dist/stats.html", gzipSize: true, brotliSize: true }),
     ],
   },
