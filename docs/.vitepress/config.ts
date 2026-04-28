@@ -2,6 +2,7 @@ import { defineConfig } from "vitepress";
 import Icons from "unplugin-icons/vite";
 import path from "node:path";
 import fs from "node:fs";
+import UnoCSS from 'unocss/vite'
 import { fileURLToPath } from "node:url";
 import { glbCompressPlugin } from "./plugins/glb";
 import { ViteImageOptimizer } from "vite-plugin-image-optimizer";
@@ -55,12 +56,19 @@ export default defineConfig({
   vite: {
     logLevel: "info",
     resolve: {
-      alias: {
-        "~/svg": path.resolve(__dirname, "../svg"),
-        "~/models": path.resolve(__dirname, "../models"),
-        "~/recording": path.resolve(__dirname, "../recording"),
-        "~/docs": path.resolve(__dirname, "../"),
-      },
+      alias: [
+        {
+          find: /^.*\/VPFeature\.vue$/,
+          replacement: fileURLToPath(
+            new URL('./theme/components/CustomVPFeature.vue', import.meta.url)
+          )
+        },
+        {
+          find: /^~\/(.*)$/,
+          replacement: path.resolve(__dirname, "../$1"),
+        }
+        
+      ],
     },
     plugins: [
       glbCompressPlugin(),
@@ -84,6 +92,9 @@ export default defineConfig({
           ],
         },
       }),
+      UnoCSS({
+        configFile: path.resolve(__dirname, "uno.config.ts"),
+      })
     ],
   },
 });

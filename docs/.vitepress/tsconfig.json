@@ -8,10 +8,7 @@
     "lib": ["ES2022", "DOM"],
     "skipLibCheck": true,
     "paths": {
-      "~/models/*": ["../models/*"],
-      "~/recording/*": ["../recording/*"],
-      "~/docs/*": ["../*"],
-      "~/svg/*": ["../svg/*"],
+      "~/*": ["../*"],
     }
   },
   "include": [

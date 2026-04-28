@@ -7,6 +7,7 @@ import SchematicViewer from "./components/SchematicViewer.vue";
 import PCBViewer from "./components/PCBViewer.vue";
 import type { Theme } from "vitepress";
 import './custom.css'
+import 'virtual:uno.css'
 
 export default {
   extends: DefaultTheme,

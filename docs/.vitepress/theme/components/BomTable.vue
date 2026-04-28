@@ -3,7 +3,7 @@ import { ref, computed } from "vue";
 import FlagEU from "~icons/circle-flags/eu";
 import FlagUS from "~icons/circle-flags/us";
 import ResistorBands from "./ResistorBands.vue";
-import bomText from "~/docs/bom.csv?raw";
+import bomText from "~/bom.csv?raw";
 
 interface BomRow {
   [key: string]: string;
