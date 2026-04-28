@@ -4,7 +4,7 @@ layout: home
 hero:
   name: "esp-butt"
   text: "A physical controller for intimate devices"
-  tagline: "No phone. No app. Just knobs, sliders, and hundreds compatible toys."
+  tagline: "No phone. No app. Just knobs, sliders, and hundreds of compatible toys."
   actions:
     - theme: brand
       text: Hardware
