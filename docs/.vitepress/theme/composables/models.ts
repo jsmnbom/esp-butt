@@ -8,7 +8,8 @@
 
 export { default as assemblyGlb } from "~/models/assembly.glb";
 export { default as pcbGlb } from "~/models/pcb.glb";
-export { default as caseGlb } from "~/models/case.glb";
+export { default as caseTopGlb } from "~/models/case_top.glb";
+export { default as caseBottomGlb } from "~/models/case_bottom.glb";
 export { default as encoderKnobGlb } from "~/models/encoder_knob.glb";
 export { default as sliderKnobGlb } from "~/models/slider_knob.glb";
 export { default as powerSwitchCapGlb } from "~/models/power_switch_cap.glb";
@@ -18,5 +19,6 @@ export { default as powerSwitchCapGlb } from "~/models/power_switch_cap.glb";
 export { default as caseTopStepUrl } from "~/models/case_top.step?url";
 export { default as caseBottomStepUrl } from "~/models/case_bottom.step?url";
 export { default as encoderKnobStepUrl } from "~/models/encoder_knob.step?url";
-export { default as sliderKnobStepUrl } from "~/models/slider_knob.step?url";
+export { default as sliderKnobBodyStepUrl } from "~/models/slider_knob_body.step?url";
+export { default as sliderKnobInsertStepUrl } from "~/models/slider_knob_insert.step?url";
 export { default as powerSwitchCapStepUrl } from "~/models/power_switch_cap.step?url";

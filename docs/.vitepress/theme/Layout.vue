@@ -12,5 +12,10 @@ const { frontmatter } = useData();
     <template v-if="frontmatter.layout === 'home'" #home-hero-image>
       <HeroImage />
     </template>
+    <template #layout-bottom>
+      <footer class="esp-butt-footer">
+        Some links on this site may include referral or promotional codes.
+      </footer>
+    </template>
   </Layout>
 </template>

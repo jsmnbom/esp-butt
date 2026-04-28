@@ -20,6 +20,10 @@ run = "bun run docs:build"
 description = "Preview built VitePress site"
 run = "bun run docs:preview"
 
+[tasks."docs:assets"]
+description = "Build documentation assets (3D models, BOM, PCB SVGs)"
+run = "uv run docs/assets.py"
+
 # ---------------------------------------------------------------------------
 # ESP32-S3 firmware
 # ---------------------------------------------------------------------------

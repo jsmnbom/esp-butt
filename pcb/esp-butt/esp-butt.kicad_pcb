@@ -1300,7 +1300,7 @@
 				)
 			)
 		)
-		(property "Value" "XIAO-ESP32-C3"
+		(property "Value" "XIAO-ESP32-S3"
 			(at 0 0 90)
 			(unlocked yes)
 			(layer "F.Fab")

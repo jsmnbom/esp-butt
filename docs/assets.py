@@ -3,8 +3,8 @@
 Build documentation assets: 3D models (CAD), PCB glTF, BOM, and PCB SVGs.
 
 Usage:
-    ./docs_build.py              # run all steps
-    ./docs_build.py cad svg      # run specific steps (in order)
+    ./assets.py              # run all steps
+    ./assets.py cad svg      # run specific steps (in order)
 
 Steps:
   cad   Export 3D models (.step / .glb) from CAD notebooks
@@ -19,7 +19,7 @@ import subprocess
 from pathlib import Path
 import sys
 
-REPO_ROOT = Path(__file__).resolve().parent
+REPO_ROOT = Path(__file__).resolve().parent.parent
 DOCS_DIR = REPO_ROOT / "docs"
 DOCS_PUBLIC = DOCS_DIR / "public"
 MODELS_DIR = DOCS_DIR / "models"
@@ -46,6 +46,7 @@ os.environ["BUILDING_DOCS"] = "1"
 os.environ["NO_CAD_EXPORT"] = "1"
 os.environ["KICAD_CONFIG_HOME"] = os.environ.get("KICAD_CONFIG_HOME", str(PCB_DIR / "kicad-config"))
 
+sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(CAD_DIR))
 
 
@@ -87,7 +88,7 @@ def step_cad() -> None:
 
   from cad.case import PCB, case, case_top, case_bottom  # type: ignore[import]
   from cad.encoder_knob import encoder_knob  # type: ignore[import]
-  from cad.slider_knob import slider_knob  # type: ignore[import]
+  from cad.slider_knob import slider_knob, slider_knob_body, slider_knob_insert  # type: ignore[import]
   from cad.power_switch_cap import power_switch_cap  # type: ignore[import]
   from cad.assembly import create_assembly  # type: ignore[import]
 
@@ -97,9 +98,9 @@ def step_cad() -> None:
 
   MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
-  assembly = create_assembly(PCB, slider_knob, encoder_knob, power_switch_cap, case_top, case_bottom)
+  assembly = create_assembly(PCB, slider_knob, encoder_knob, power_switch_cap, case)
 
-  models = [case, case_top, case_bottom, encoder_knob, slider_knob, power_switch_cap, assembly]
+  models = [case, case_top, case_bottom, encoder_knob, slider_knob, slider_knob_body, slider_knob_insert, power_switch_cap, assembly]
   for model in models:
     print(f"  {model.label}...")
     export_step(model, MODELS_DIR / f"{model.label}.step")
@@ -122,9 +123,9 @@ def step_bom() -> None:
     "bom",
     BOM_FILE,
     "--fields",
-    "Reference,${QUANTITY},Value,Value_ALT,Source_EU,Source_US",
+    "Reference,${QUANTITY},Value,Value_ALT,Description,Source_EU,Source_US",
     "--labels",
-    "Reference,Quantity,Value,Value_ALT,Source_EU,Source_US",
+    "Reference,Quantity,Value,Value_ALT,Description,Source_EU,Source_US",
     "--group-by",
     "Value,Footprint",
     "--field-delimiter",

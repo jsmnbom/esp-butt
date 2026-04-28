@@ -9,12 +9,6 @@ interface BomRow {
   [key: string]: string;
 }
 
-function displayValue(row: BomRow): string {
-  const val = row["Value"] ?? "";
-  const alt = row["Value_ALT"] ?? "";
-  return alt ? `${val} / ${alt}` : val;
-}
-
 const activeTab = ref<"EU" | "US">("EU");
 
 function parseCSV(text: string): { headers: string[]; rows: BomRow[] } {
@@ -46,21 +40,17 @@ const sourceCol = computed(() =>
   activeTab.value === "EU" ? "Source_EU" : "Source_US"
 );
 
-const SELECTED_COLS = ["Reference", "Quantity", "Value"];
+const SELECTED_COLS = ["Reference", "Quantity", "Value", "Description"];
 
 const visibleHeaders = computed(() =>
   headers.filter((h) => SELECTED_COLS.includes(h))
 );
 
-const hasSources = computed(
-  () =>
-    headers.includes("Source_EU") || headers.includes("Source_US")
-);
 </script>
 
 <template>
   <div class="bom-table">
-    <div v-if="hasSources" class="tabs">
+    <div class="tabs">
       <button :class="{ active: activeTab === 'EU' }" @click="activeTab = 'EU'">
         <FlagEU style="font-size:1.2em" /> EU
       </button>
@@ -72,32 +62,33 @@ const hasSources = computed(
       <thead>
         <tr>
           <th v-for="h in visibleHeaders" :key="h">{{ h }}</th>
-          <th v-if="hasSources">Source</th>
+          <th>Source</th>
         </tr>
       </thead>
       <tbody>
-          <tr v-for="(row, i) in rows" :key="i">
-            <td v-for="h in visibleHeaders" :key="h">
-              <template v-if="h === 'Value'">
-                <span class="value-cell">
-                  {{ displayValue(row) }}
-                  <ResistorBands :value="row['Value']" />
-                </span>
+        <tr v-for="(row, i) in rows" :key="i">
+          <td v-for="h in visibleHeaders" :key="h">
+            <template v-if="h === 'Value'">
+              <span class="value-cell">
+                <span>{{ row['Value'] }}</span>
+                <span class="value-alt" v-if="row['Value_ALT']">{{ row['Value_ALT'] }}</span>
+                <ResistorBands :value="row['Value']" />
+              </span>
+            </template>
+            <template v-else>{{ row[h] }}</template>
+          </td>
+          <td>
+            <template v-if="row[sourceCol]">
+              <template v-for="(url, ui) in row[sourceCol].split(',')" :key="ui">
+                <span v-if="ui > 0">, </span>
+                <a :href="url.trim()" target="_blank" rel="noopener noreferrer">
+                  {{ distributorName(url.trim()) }}
+                </a>
               </template>
-              <template v-else>{{ row[h] }}</template>
-            </td>
-            <td v-if="hasSources">
-              <template v-if="row[sourceCol]">
-                <template v-for="(url, ui) in row[sourceCol].split(',')" :key="ui">
-                  <span v-if="ui > 0">, </span>
-                  <a :href="url.trim()" target="_blank" rel="noopener noreferrer">
-                    {{ distributorName(url.trim()) }}
-                  </a>
-                </template>
-              </template>
-              <span v-else>—</span>
-            </td>
-          </tr>
+            </template>
+            <span v-else>—</span>
+          </td>
+        </tr>
       </tbody>
     </table>
   </div>
@@ -107,11 +98,13 @@ const hasSources = computed(
 .bom-table {
   overflow-x: auto;
 }
+
 .tabs {
   display: flex;
   gap: 4px;
   margin-bottom: 12px;
 }
+
 .tabs button {
   display: inline-flex;
   align-items: center;
@@ -124,35 +117,57 @@ const hasSources = computed(
   cursor: pointer;
   font-size: 0.9em;
 }
+
 .tabs button.active {
   background: var(--vp-c-brand-1);
   color: white;
   border-color: var(--vp-c-brand-1);
 }
+
 table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.9em;
+  display: table;
 }
+
 th,
 td {
   padding: 8px 12px;
   border: 1px solid var(--vp-c-divider);
   text-align: left;
 }
+
 th {
   background: var(--vp-c-bg-soft);
   font-weight: 600;
 }
+
 tr:nth-child(even) td {
   background: var(--vp-c-bg-soft);
 }
+
 .error {
   color: var(--vp-c-danger-1);
 }
+
 .value-cell {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+}
+
+.value-cell span {
+  display: inline-flex;
+  align-items: center;
+}
+
+.value-cell span+span::before {
+  content: "·";
+  color: var(--vp-c-text-3);
+  margin: 0 0.3em;
+}
+
+.value-alt {
+  color: var(--vp-c-text-3);
 }
 </style>

@@ -1,22 +1,4 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
-import { useData } from "vitepress";
-
-const { isDark } = useData();
-const frontSvg = ref("");
-const backSvg = ref("");
-
-async function load(dark: boolean) {
-  const [front, back] = await Promise.all([
-    dark ? import("~/svg/front/dark.svg?raw") : import("~/svg/front/light.svg?raw"),
-    dark ? import("~/svg/back/dark.svg?raw") : import("~/svg/back/light.svg?raw"),
-  ]);
-  frontSvg.value = front.default;
-  backSvg.value = back.default;
-}
-
-load(isDark.value);
-watch(isDark, load);
 </script>
 
 <template>
@@ -24,8 +6,12 @@ watch(isDark, load);
     <span class="pcb-label front-label">Front</span>
     <div class="pcb-divider" />
     <span class="pcb-label back-label">Back</span>
-    <div class="pcb-svg front-svg" v-html="frontSvg" />
-    <div class="pcb-svg back-svg" v-html="backSvg" />
+    <div class="pcb-svg front-svg">
+      <img src="" class="pcb-img pcb-front" alt="PCB Front">
+    </div>
+    <div class="pcb-svg back-svg">
+      <img src="" class="pcb-img pcb-back" alt="PCB Back">
+    </div>
   </div>
 </template>
 
@@ -75,9 +61,27 @@ watch(isDark, load);
 .front-svg { grid-area: front-svg; }
 .back-svg  { grid-area: back-svg; }
 
-.pcb-svg :deep(svg) {
+.pcb-img {
   max-width: 100%;
   width: 100%;
   height: auto;
+}
+</style>
+
+<style>
+.pcb-front {
+  content: url('/svg/front/light.svg');
+}
+
+.pcb-back {
+  content: url('/svg/back/light.svg');
+}
+
+html.dark .pcb-front {
+  content: url('/svg/front/dark.svg');
+}
+
+html.dark .pcb-back {
+  content: url('/svg/back/dark.svg');
 }
 </style>

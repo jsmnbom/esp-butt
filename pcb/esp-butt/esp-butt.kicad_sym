@@ -1058,7 +1058,7 @@
 		(in_pos_files yes)
 		(duplicate_pin_numbers_are_jumpers no)
 		(property "Reference" "R"
-			(at -5.08 5.08 0)
+			(at -5.08 6.604 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -1069,7 +1069,7 @@
 			)
 		)
 		(property "Value" "PTA4543-2015DPB103"
-			(at -5.08 2.54 0)
+			(at -5.08 4.572 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -1080,7 +1080,7 @@
 			)
 		)
 		(property "Footprint" "PTA4543-2015DPB103:TRIM_PTA4543-2015DPB103"
-			(at 0 0 0)
+			(at 1.016 -5.334 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(hide yes)
@@ -1114,7 +1114,7 @@
 			)
 		)
 		(property "PARTREV" "04/21"
-			(at 0 0 0)
+			(at 7.112 -2.54 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(hide yes)
@@ -1126,7 +1126,7 @@
 			)
 		)
 		(property "SNAPEDA_PN" "PTA4543-2015DPB103"
-			(at 0 0 0)
+			(at -21.336 2.032 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(hide yes)
@@ -1138,7 +1138,7 @@
 			)
 		)
 		(property "MANUFACTURER" "Bourns"
-			(at 0 0 0)
+			(at -7.874 -2.54 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(hide yes)
@@ -1150,7 +1150,7 @@
 			)
 		)
 		(property "MAXIMUM_PACKAGE_HEIGHT" "21.5 mm"
-			(at 0 0 0)
+			(at 18.796 -1.524 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(hide yes)
@@ -1162,7 +1162,7 @@
 			)
 		)
 		(property "STANDARD" "Manufacturer Recommendations"
-			(at 0 0 0)
+			(at -4.064 5.842 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(hide yes)
@@ -1171,6 +1171,16 @@
 					(size 1.27 1.27)
 				)
 				(justify bottom)
+			)
+		)
+		(property "Value_ALT" "10k±20%, 0.25W Linear"
+			(at 6.35 3.048 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
 			)
 		)
 		(symbol "PTA4543-2015DPB103_0_0"

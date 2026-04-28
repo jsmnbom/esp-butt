@@ -5,16 +5,16 @@ interface Band {
 }
 
 const BAND_COLORS: Band[] = [
-  { name: "Black",  bg: "#1a1a1a" },
-  { name: "Brown",  bg: "#795548" },
-  { name: "Red",    bg: "#e53935" },
+  { name: "Black", bg: "#1a1a1a" },
+  { name: "Brown", bg: "#795548" },
+  { name: "Red", bg: "#e53935" },
   { name: "Orange", bg: "#fb8c00" },
   { name: "Yellow", bg: "#fdd835" },
-  { name: "Green",  bg: "#43a047" },
-  { name: "Blue",   bg: "#1e88e5" },
+  { name: "Green", bg: "#43a047" },
+  { name: "Blue", bg: "#1e88e5" },
   { name: "Violet", bg: "#8e24aa" },
-  { name: "Gray",   bg: "#757575" },
-  { name: "White",  bg: "#f5f5f5" },
+  { name: "Gray", bg: "#757575" },
+  { name: "White", bg: "#f5f5f5" },
 ];
 
 const GOLD: Band = { name: "Gold (±5%)", bg: "#ccaa00" };
@@ -28,7 +28,7 @@ function parseOhms(value: string): number | null {
   switch (m[2].toLowerCase()) {
     case "k": return n * 1e3;
     case "m": return n * 1e6;
-    default:  return n;
+    default: return n;
   }
 }
 
@@ -51,18 +51,11 @@ const bands = computeBands(props.value);
 </script>
 
 <template>
-  <span
-    v-if="bands.length"
-    class="res-bands"
-    :title="bands.map(b => b.name).join(' / ')"
-  >
-    <span
-      v-for="(band, i) in bands"
-      :key="i"
-      class="band"
-      :class="{ 'band-tol': i === 3 }"
-      :style="{ background: band.bg }"
-    />
+  <span v-if="bands.length" class="wrapper" :title="bands.map(b => b.name).join(' / ')">
+    <span v-if="bands.length" class="res-bands">
+      <span v-for="(band, i) in bands" :key="i" class="band" :class="{ 'band-tol': i === 3 }"
+        :style="{ background: band.bg }" />
+    </span>
   </span>
 </template>
 
@@ -78,10 +71,12 @@ const bands = computeBands(props.value);
   flex-shrink: 0;
   cursor: default;
 }
+
 .band {
   display: inline-block;
   width: 10px;
 }
+
 .band-tol {
   margin-left: 2px;
 }
