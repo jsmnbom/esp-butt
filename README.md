@@ -11,13 +11,13 @@ This project is still in fairly early development, it has some quirks and rough 
 <div align="center">
   <table>
     <tr>
-      <td><a href="https://jsmnbom.github.io/esp-butt/"><p align="center"><big><big>🏠</big></big><br/>Home</p></a></td>
-      <td><a href="https://jsmnbom.github.io/esp-butt/hardware"><p align="center"><big><big>🛠️</big></big><br/>Hardware</p></a></td>
-      <td><a href="https://jsmnbom.github.io/esp-butt/hardware"><p align="center"><big><big>📋</big></big><br/>BOM</p></a></td>
-      <td><a href="https://jsmnbom.github.io/esp-butt/hardware"><p align="center"><big><big>📐</big></big><br/>Schematic</p></a></td>
-      <td><a href="https://jsmnbom.github.io/esp-butt/hardware"><p align="center"><big><big>🟩</big></big><br/>PCB</p></a></td>
-      <td><a href="https://jsmnbom.github.io/esp-butt/hardware"><p align="center"><big><big>🧊</big></big><br/>3D Models</p></a></td>
-      <td><a href="https://jsmnbom.github.io/esp-butt/firmware"><p align="center"><big><big>⚙️</big></big><br/>Firmware</p></a></td>
+      <td><a href="https://jsmnbom.github.io/esp-butt/"><h3 align="center">🏠<br/>Home</h3></a></td>
+      <td><a href="https://jsmnbom.github.io/esp-butt/hardware"><h3 align="center">🛠️<br/>Hardware</h3></a></td>
+      <td><a href="https://jsmnbom.github.io/esp-butt/hardware"><h3 align="center">📋<br/>BOM</h3></a></td>
+      <td><a href="https://jsmnbom.github.io/esp-butt/hardware"><h3 align="center">📐<br/>Schematic</h3></a></td>
+      <td><a href="https://jsmnbom.github.io/esp-butt/hardware"><h3 align="center">🟩<br/>PCB</h3></a></td>
+      <td><a href="https://jsmnbom.github.io/esp-butt/hardware"><h3 align="center">🧊<br/>3D Models</h3></a></td>
+      <td><a href="https://jsmnbom.github.io/esp-butt/firmware"><h3 align="center">⚙️<br/>Firmware</h3></a></td>
     </tr>
   </table>
 </div>
