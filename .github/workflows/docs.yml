@@ -73,7 +73,7 @@ jobs:
       - name: Generate documentation assets
         env:
           KICAD_CONFIG_HOME: pcb/kicad-config/
-        run: uv run ./docs_build.py
+        run: uv run ./docs/assets.py
 
       - name: Build VitePress site
         run: bun run docs:build

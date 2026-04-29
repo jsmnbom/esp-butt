@@ -35,7 +35,9 @@ jobs:
         id: cache-xtensa-toolchain
         uses: actions/cache@v5
         with:
-          path: ~/.rustup/toolchains/esp
+          path: |
+            ~/.rustup/toolchains/esp
+            ~/export-esp.sh
           key: xtensa-toolchain-1.93.0.0-${{ runner.os }}
 
       - name: Install espup and Xtensa Rust toolchain
