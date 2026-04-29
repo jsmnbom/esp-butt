@@ -5,8 +5,7 @@ name = "esp-butt"
 version = "0.1.0"
 authors = ["Jasmin Bom <jsmnbom@gmail.com>"]
 edition = "2024"
-rust-version = "1.87"
-
+rust-version = "1.93"
 default-run = "esp-butt"
 
 [[bin]]
@@ -64,12 +63,12 @@ litemap = "0.8.1"
 
 [target.'cfg(target_os = "espidf")'.dependencies]
 esp-idf-svc = "0.52.1"
-tokio = { version = "1.49.0", features = ["sync"] }
+tokio = { version = "1.49", features = ["sync"] }
 
 [target.'cfg(not(target_os = "espidf"))'.dependencies]
-tokio = { version = "1.49.0", features = ["sync", "time", "rt", "rt-multi-thread"] }
+tokio = { version = "1.49", features = ["sync", "time", "rt", "rt-multi-thread"] }
 ratatui = "0.30.0"
-ratatui-image = { version = "10.0.6", default-features = false, features = ["crossterm"] }
+ratatui-image = { version = "10.0", default-features = false, features = ["crossterm"] }
 image = { version = "0.25.9", default-features = false, features = ["png", "gif"] }
 tracing-subscriber = "0.3.22"
 tracy-client = { version = "0.18.4", features = ["demangle", "flush-on-exit"] }
@@ -84,7 +83,7 @@ buttplug_core = { version = "10.0.0", default-features = false}
 buttplug_server_device_config = { version = "10.0.0" }
 postcard = { version = "1.1.3", default-features = false, features = ["use-std"] }
 miniz_oxide = "0.8.9"
-image = { version = "0.24.7", default-features = false, features = ["png"] }
+image = { version = "0.25.10", default-features = false, features = ["png"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 

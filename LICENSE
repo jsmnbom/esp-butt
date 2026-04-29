@@ -1,0 +1,10 @@
+SPDX-License-Identifier: MIT
+
+Copyright (c) 2026 Jasmin Bom <jsmnbom@gmail.com>
+
+This project uses multiple licenses depending on the component. See README.md
+for the full breakdown.
+
+The source code (src/), documentation (docs/), and CAD files (cad/) are
+licensed under the MIT License:
+https://opensource.org/licenses/MIT

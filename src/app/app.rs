@@ -230,7 +230,7 @@ impl App {
 
   pub(super) async fn goto_idle(&mut self) {
     self.set_state(AppState::Idle);
-     if self.scanning {
+    if self.scanning {
       log::info!("Stopping scan before going idle");
       match self.client.stop_scanning().await {
         Ok(_) => {
